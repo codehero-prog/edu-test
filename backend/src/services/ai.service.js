@@ -36,7 +36,7 @@ FAQAT JSON formatda javob ber, boshqa hech narsa yozma:
 {"questions":[{"id":1,"question":"Savol matni?","options":{"A":"variant1","B":"variant2","C":"variant3","D":"variant4"},"correctAnswer":"A","explanation":"Izoh"},{"id":2,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"B","explanation":"Izoh"},{"id":3,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"C","explanation":"Izoh"},{"id":4,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"A","explanation":"Izoh"},{"id":5,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"D","explanation":"Izoh"}]}`;
 
   const completion = await groqRequest({
-    model: "llama3-8b-8192",
+    model: "llama-3.3-70b-versatile",
     messages: [{ role: "user", content: prompt }],
     max_tokens: 2000,
     temperature: 0.3,
@@ -99,7 +99,7 @@ const generateFeedback = async (extractedText, correctCount, percentage, results
       .join("\n");
 
     const completion = await groqRequest({
-      model: "llama3-8b-8192",
+      model: "llama-3.3-70b-versatile",
       messages: [{
         role: "user",
         content: `Talaba ${correctCount}/5 to'g'ri javob berdi (${percentage.toFixed(0)}%). ${wrong ? "Xato savollar:\n" + wrong : "Barchasi to'g'ri!"} O'zbek tilida 2-3 gaplik rag'batlantiruvchi fikr yoz.`,
