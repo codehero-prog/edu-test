@@ -10,7 +10,7 @@ import { PageLoader } from '../../components/Spinner'
 const GRADE_COLORS = ['#ef4444', '#eab308', '#3b82f6', '#10b981']
 
 export default function AdminDashboard() {
-  const [stats, setStats]     = useState(null)
+  const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -21,21 +21,21 @@ export default function AdminDashboard() {
 
   if (loading) return <DashboardLayout title="Administrator paneli"><PageLoader /></DashboardLayout>
 
-  const chartData = [
-    { name: "2 baho",  count: stats.gradeDistribution?.[2] || 0 },
-    { name: "3 baho",  count: stats.gradeDistribution?.[3] || 0 },
-    { name: "4 baho",  count: stats.gradeDistribution?.[4] || 0 },
-    { name: "5 baho",  count: stats.gradeDistribution?.[5] || 0 },
-  ]
+  const chartData = stats ? [
+    { name: "2", label: "Qoniqarsiz", count: stats.gradeDistribution?.[2] || 0 },
+    { name: "3", label: "Qoniqarli", count: stats.gradeDistribution?.[3] || 0 },
+    { name: "4", label: "Yaxshi", count: stats.gradeDistribution?.[4] || 0 },
+    { name: "5", label: "A'lo", count: stats.gradeDistribution?.[5] || 0 },
+  ] : []
 
   return (
     <DashboardLayout title="Administrator paneli">
       <div className="space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard title="O'qituvchilar"  value={stats.totalTeachers}           icon={Users}         iconColor="text-purple-600" iconBg="bg-purple-50" />
-          <StatCard title="Talabalar"      value={stats.totalStudents}            icon={GraduationCap} iconColor="text-blue-600"   iconBg="bg-blue-50" />
-          <StatCard title="Jami Ishlar"    value={stats.totalSubmissions}         icon={FileText}      iconColor="text-slate-600"  iconBg="bg-slate-100" />
-          <StatCard title="Baholangan"     value={stats.totalGradedSubmissions}   icon={CheckCircle}   iconColor="text-emerald-600" iconBg="bg-emerald-50"
+          <StatCard title="O'qituvchilar" value={stats.totalTeachers} icon={Users} iconColor="text-purple-600" iconBg="bg-purple-50" />
+          <StatCard title="Talabalar" value={stats.totalStudents} icon={GraduationCap} iconColor="text-blue-600" iconBg="bg-blue-50" />
+          <StatCard title="Jami Ishlar" value={stats.totalSubmissions} icon={FileText} iconColor="text-slate-600" iconBg="bg-slate-100" />
+          <StatCard title="Baholangan" value={stats.totalGradedSubmissions} icon={CheckCircle} iconColor="text-emerald-600" iconBg="bg-emerald-50"
             subtitle={`Kutilmoqda: ${stats.pendingSubmissions}`} />
         </div>
 
