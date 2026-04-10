@@ -29,13 +29,20 @@ api.interceptors.response.use(
     }
 
     // 401 — token muddati tugagan, refresh qilamiz
+    // Login sahifasida bo'lsak redirect qilmaymiz
     if (status === 401 && !original._retry) {
       original._retry = true
+
+      // Login/refresh endpointlarida loopdan saqlaymiz
+      if (original.url?.includes('/auth/login') || original.url?.includes('/auth/refresh')) {
+        return Promise.reject(error)
+      }
+
       const refreshToken = Cookies.get('refreshToken')
 
       if (!refreshToken) {
         Cookies.remove('accessToken')
-        window.location.href = '/login'
+        if (window.location.pathname !== '/login') window.location.href = '/login'
         return Promise.reject(error)
       }
 
@@ -52,7 +59,7 @@ api.interceptors.response.use(
       } catch {
         Cookies.remove('accessToken')
         Cookies.remove('refreshToken')
-        window.location.href = '/login'
+        if (window.location.pathname !== '/login') window.location.href = '/login'
         return Promise.reject(error)
       }
     }

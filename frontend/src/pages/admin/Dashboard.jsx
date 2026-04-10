@@ -3,7 +3,7 @@ import DashboardLayout from '../../components/DashboardLayout'
 import StatsModal from '../../components/StatsModal'
 import { cn, formatDate, statusColors, statusLabels } from '../../lib/utils'
 import api from '../../lib/api'
-import { Users, GraduationCap, FileText, CheckCircle, Loader2 } from 'lucide-react'
+import { Users, GraduationCap, FileText, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
 import { PageLoader } from '../../components/Spinner'
 
 function StatBox({ label, value, icon: Icon, color, bg, onClick }) {
@@ -57,6 +57,17 @@ export default function AdminDashboard() {
   }
 
   if (loading) return <DashboardLayout title="Admin Dashboard"><PageLoader /></DashboardLayout>
+
+  if (!stats) return (
+    <DashboardLayout title="Admin Dashboard">
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <AlertCircle className="w-12 h-12 text-red-400 mb-3" />
+        <p className="text-slate-600 font-medium">Ma'lumotlar yuklanmadi</p>
+        <p className="text-slate-400 text-sm mt-1">Sahifani yangilang yoki qayta kiring</p>
+        <button onClick={() => window.location.reload()} className="mt-4 btn-primary px-6 py-2">Yangilash</button>
+      </div>
+    </DashboardLayout>
+  )
 
   const modalTitles = {
     teachers:    "O'qituvchilar ro'yxati",

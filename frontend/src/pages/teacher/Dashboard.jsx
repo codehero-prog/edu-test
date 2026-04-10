@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import DashboardLayout from '../../components/DashboardLayout'
 import { cn } from '../../lib/utils'
 import api from '../../lib/api'
-import { GraduationCap, FileText, CheckCircle, Clock, BookOpen } from 'lucide-react'
+import { GraduationCap, FileText, CheckCircle, Clock, BookOpen, AlertCircle } from 'lucide-react'
 import { PageLoader } from '../../components/Spinner'
 
 function StatBox({ label, value, sub, icon: Icon, color, bg, onClick }) {
@@ -36,6 +36,17 @@ export default function TeacherDashboard() {
   }, [])
 
   if (loading) return <DashboardLayout title="O'qituvchi Paneli"><PageLoader /></DashboardLayout>
+
+  if (!stats) return (
+    <DashboardLayout title="O'qituvchi Paneli">
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <AlertCircle className="w-12 h-12 text-red-400 mb-3" />
+        <p className="text-slate-600 font-medium">Ma'lumotlar yuklanmadi</p>
+        <p className="text-slate-400 text-sm mt-1">Sahifani yangilang yoki qayta kiring</p>
+        <button onClick={() => window.location.reload()} className="mt-4 btn-primary px-6 py-2">Yangilash</button>
+      </div>
+    </DashboardLayout>
+  )
 
   const totalGroups = stats.groupStats?.length || 0
 
