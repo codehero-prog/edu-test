@@ -6,6 +6,7 @@ import ConfirmDialog from '../../components/ConfirmDialog'
 import { cn, formatDate, statusColors, statusLabels, fileTypeIcons } from '../../lib/utils'
 import { useAuth } from '../../context/AuthContext'
 import api from '../../lib/api'
+import { downloadSubmission } from '../../lib/download'
 import toast from 'react-hot-toast'
 import {
   BookOpen, Users, Plus, Calendar,
@@ -446,22 +447,19 @@ export default function TeacherGroups() {
                               <p className="text-xs font-semibold text-slate-500 mb-1.5">
                                 📎 Yuklangan fayl
                               </p>
-                              <a
-                                href={sub.fileUrl}
-                                download
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-2.5 bg-white border border-slate-200 rounded-lg px-3 py-2.5 hover:border-primary-300 hover:bg-primary-50 transition-all group/file">
+                              <button
+                                onClick={() => downloadSubmission(sub.id, sub.fileName, 'teacher')}
+                                className="w-full flex items-center gap-2.5 bg-white border border-slate-200 rounded-lg px-3 py-2.5 hover:border-primary-300 hover:bg-primary-50 transition-all group/file">
                                 <span className="text-xl flex-shrink-0">
                                   {fileTypeIcons[sub.fileType] || '📄'}
                                 </span>
-                                <div className="flex-1 min-w-0">
+                                <div className="flex-1 min-w-0 text-left">
                                   <p className="text-sm font-medium text-slate-800 truncate">{sub.title}</p>
                                   <p className="text-xs text-slate-400 uppercase">{sub.fileType}</p>
                                 </div>
                                 <Download size={14}
                                   className="text-slate-400 group-hover/file:text-primary-600 flex-shrink-0 transition-colors" />
-                              </a>
+                              </button>
                             </div>
                           )}
 

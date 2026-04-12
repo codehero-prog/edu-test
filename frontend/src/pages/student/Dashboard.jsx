@@ -11,6 +11,7 @@ import {
   fileTypeIcons,
 } from "../../lib/utils";
 import api from "../../lib/api";
+import { downloadSubmission } from "../../lib/download";
 import {
   FileText,
   CheckCircle,
@@ -561,15 +562,12 @@ export default function StudentDashboard() {
                   Tarixga o'tish
                 </Link>
                 {detailSub.fileUrl && (
-                  <a
-                    href={sub.fileUrl}
-                    download
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() => downloadSubmission(detailSub.id, detailSub.fileName)}
                     className="btn-secondary px-4 py-2.5"
                   >
                     <Download size={16} />
-                  </a>
+                  </button>
                 )}
               </div>
             </div>

@@ -10,6 +10,7 @@ import {
   fileTypeIcons,
 } from "../../lib/utils";
 import api from "../../lib/api";
+import { downloadSubmission } from "../../lib/download";
 import {
   FileText,
   Loader2,
@@ -317,15 +318,12 @@ export default function StudentHistory() {
                   Yopish
                 </button>
                 {selected.fileUrl && (
-                  <a
-                    href={sub.fileUrl}
-                    download
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() => downloadSubmission(selected.id, selected.fileName)}
                     className="btn-secondary px-4 py-2.5"
                   >
                     <Download size={16} />
-                  </a>
+                  </button>
                 )}
               </div>
             </div>

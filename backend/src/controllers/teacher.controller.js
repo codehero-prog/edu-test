@@ -274,10 +274,33 @@ const grantExtraChance = async (req, res) => {
   return successResponse(res, { report: updated }, "3-imkoniyat berildi");
 };
 
+// ===== DOWNLOAD FILE (teacher) =====
+const downloadSubmissionFile = async (req, res) => {
+  const prisma = require("../config/prisma");
+  const { AppError } = require("../middleware/errorHandler");
+
+  const submission = await prisma.submission.findFirst({
+    where: { id: req.params.submissionId },
+    select: { fileUrl: true, fileName: true, student: { select: { teacherId: true } } },
+  });
+  if (!submission) throw new AppError("Fayl topilmadi.", 404);
+  if (submission.student.teacherId !== req.user.id) throw new AppError("Ruxsat yo'q.", 403);
+
+  const response = await fetch(submission.fileUrl);
+  if (!response.ok) throw new AppError("Fayl yuklab bo'lmadi.", 500);
+
+  const buffer = await response.arrayBuffer();
+  const safeName = encodeURIComponent(submission.fileName);
+
+  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${safeName}`);
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.send(Buffer.from(buffer));
+};
+
 module.exports = {
   createStudent, getMyStudents, getStudentDetail,
   getGroupsWithStats, getSemesterStudents,
   getDashboardStats, toggleStudentStatus, deleteStudent,
   createSemester, getSemesters, deleteSemester,
-  grantExtraChance,
+  grantExtraChance, downloadSubmissionFile,
 };

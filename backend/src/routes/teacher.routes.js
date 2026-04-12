@@ -4,7 +4,7 @@ const {
   getGroupsWithStats, getSemesterStudents,
   getDashboardStats, toggleStudentStatus, deleteStudent,
   createSemester, getSemesters, deleteSemester,
-  grantExtraChance,
+  grantExtraChance, downloadSubmissionFile,
 } = require("../controllers/teacher.controller");
 const { isTeacher } = require("../middleware/auth");
 
@@ -30,5 +30,8 @@ router.delete("/semesters/:id",       deleteSemester);
 
 // Extra chance
 router.patch("/grade-reports/:gradeReportId/extra-chance", grantExtraChance);
+
+// Download
+router.get("/submissions/:submissionId/download", downloadSubmissionFile);
 
 module.exports = router;

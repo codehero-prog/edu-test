@@ -350,7 +350,27 @@ const getSemesterInfo = async (req, res) => {
   }, "Semestr ma'lumotlari");
 };
 
+// ===== DOWNLOAD FILE =====
+const downloadFile = async (req, res) => {
+  const submission = await prisma.submission.findFirst({
+    where: { id: req.params.submissionId, studentId: req.user.id },
+    select: { fileUrl: true, fileName: true, fileType: true },
+  });
+  if (!submission) throw new AppError("Fayl topilmadi.", 404);
+
+  const response = await fetch(submission.fileUrl);
+  if (!response.ok) throw new AppError("Fayl yuklab bo'lmadi.", 500);
+
+  const buffer = await response.arrayBuffer();
+  const safeName = encodeURIComponent(submission.fileName);
+
+  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${safeName}`);
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.send(Buffer.from(buffer));
+};
+
 module.exports = {
   uploadSubmission, getTestQuestions, submitTestAnswers,
   getMySubmissions, getSubmissionResult, getDashboardStats, getSemesterInfo,
+  downloadFile,
 };

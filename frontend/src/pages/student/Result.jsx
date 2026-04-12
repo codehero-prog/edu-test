@@ -4,6 +4,7 @@ import DashboardLayout from '../../components/DashboardLayout'
 import GradeBadge from '../../components/GradeBadge'
 import { cn, formatDate, fileTypeIcons } from '../../lib/utils'
 import api from '../../lib/api'
+import { downloadSubmission } from '../../lib/download'
 import { CheckCircle, XCircle, Loader2, ArrowLeft, Download, MessageSquare } from 'lucide-react'
 import { PageLoader } from '../../components/Spinner'
 
@@ -116,10 +117,11 @@ export default function StudentResult() {
         <div className="flex gap-3">
           <Link to="/student/upload" className="btn-primary flex-1 justify-center py-3">Yangi Ish</Link>
           {data?.fileUrl && (
-            <a href={data.fileUrl} target="_blank" rel="noopener noreferrer"
+            <button
+              onClick={() => downloadSubmission(data.submissionId || data.id, data.fileName)}
               className="btn-secondary px-4 py-3 touch-manipulation">
               <Download size={16} />
-            </a>
+            </button>
           )}
         </div>
       </div>
