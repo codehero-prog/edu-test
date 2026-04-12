@@ -1,9 +1,8 @@
-# Railway deployment config
 [phases.setup]
 nixPkgs = ["nodejs_20"]
 
 [phases.install]
-cmds = ["npm ci --only=production"]
+cmds = ["npm install --omit=dev"]
 
 [phases.build]
 cmds = ["npx prisma generate"]
