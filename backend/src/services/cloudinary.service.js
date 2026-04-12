@@ -19,4 +19,6 @@ const uploadFile = async (buffer, originalName) => {
   return { url: data.publicUrl };
 };
 
-module.exports = { uploadFile };
+const deleteFile = async () => {};
+
+module.exports = { uploadFile, deleteFile };
