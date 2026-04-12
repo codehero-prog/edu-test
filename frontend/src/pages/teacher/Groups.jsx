@@ -448,6 +448,7 @@ export default function TeacherGroups() {
                               </p>
                               <a
                                 href={sub.fileUrl}
+                                download
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="flex items-center gap-2.5 bg-white border border-slate-200 rounded-lg px-3 py-2.5 hover:border-primary-300 hover:bg-primary-50 transition-all group/file">
