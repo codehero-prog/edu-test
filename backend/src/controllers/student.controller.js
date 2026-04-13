@@ -78,16 +78,19 @@ const uploadSubmission = async (req, res) => {
       },
     });
 
-    let questions;
-    try { questions = await generateTests(parsedData.text, title); }
+    let aiResult;
+    try { aiResult = await generateTests(parsedData.text, title); }
     catch (e) {
       console.error("🔴 AI XATO:", e.message);
       await prisma.submission.update({ where: { id: submission.id }, data: { status: "FAILED" } });
       throw new AppError("AI test yaratishda xatolik. Qayta urinib ko'ring.", 500);
     }
 
+    const questions = aiResult.questions || aiResult;
+    const problems  = aiResult.problems  || [];
+
     const test = await prisma.test.create({
-      data: { submissionId: submission.id, questions },
+      data: { submissionId: submission.id, questions: { questions, problems } },
     });
     await prisma.submission.update({ where: { id: submission.id }, data: { status: "TESTED" } });
 
@@ -116,15 +119,18 @@ const uploadSubmission = async (req, res) => {
     },
   });
 
-  let questions;
-  try { questions = await generateTests(parsedData.text, title); }
+  let aiResult2;
+  try { aiResult2 = await generateTests(parsedData.text, title); }
   catch (e) {
     await prisma.submission.update({ where: { id: submission.id }, data: { status: "FAILED" } });
     throw new AppError("AI test yaratishda xatolik.", 500);
   }
 
+  const questions2 = aiResult2.questions || aiResult2;
+  const problems2  = aiResult2.problems  || [];
+
   const test = await prisma.test.create({
-    data: { submissionId: submission.id, questions },
+    data: { submissionId: submission.id, questions: { questions: questions2, problems: problems2 } },
   });
   await prisma.submission.update({ where: { id: submission.id }, data: { status: "TESTED" } });
 
@@ -150,13 +156,19 @@ const getTestQuestions = async (req, res) => {
   if (test.results.length > 0)
     return errorResponse(res, "Siz bu testni allaqachon topshirgansiz.", 400);
 
-  const safeQuestions = test.questions.map((q, i) => ({
+  const rawQuestions = Array.isArray(test.questions)
+    ? test.questions
+    : (test.questions?.questions || []);
+  const problems = test.questions?.problems || [];
+
+  const safeQuestions = rawQuestions.map((q, i) => ({
     id: i + 1, question: q.question, options: q.options,
   }));
 
   return successResponse(res, {
     testId: test.id, submissionTitle: test.submission.title,
     questions: safeQuestions, totalQuestions: safeQuestions.length,
+    problems,
   }, "Test savollar yuklandi");
 };
 
@@ -181,7 +193,10 @@ const submitTestAnswers = async (req, res) => {
     return errorResponse(res, "Siz bu testni allaqachon topshirgansiz.", 400);
 
   const { correctCount, percentage, grade, gradeNumber, results } =
-    await gradeAnswers(test.questions, answers);
+    await gradeAnswers(
+      Array.isArray(test.questions) ? test.questions : (test.questions?.questions || []),
+      answers
+    );
 
   let feedback = "";
   try {

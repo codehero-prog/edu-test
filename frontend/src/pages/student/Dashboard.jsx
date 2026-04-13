@@ -81,8 +81,8 @@ export default function StudentDashboard() {
   const cards = [
     {
       key: "total",
-      label: "Umumiy fanlar",
-      value: stats.maxAttempts || 2,
+      label: "Qolgan urinishlar",
+      value: Math.max(0, (stats.maxAttempts || 2) - (stats.semesterSubmissions || 0)),
       icon: FileText,
       color: "text-slate-600",
       bg: "bg-slate-100",
@@ -302,7 +302,7 @@ export default function StudentDashboard() {
         onClose={() => setModal(null)}
         title={
           modal === "total"
-            ? "Umumiy fanlar"
+            ? "Qolgan Urinishlar"
             : modal === "submitted"
               ? "Topshirgan"
               : modal === "pending"
@@ -315,25 +315,29 @@ export default function StudentDashboard() {
           {modal === "total" && (
             <div>
               <p className="text-sm text-slate-600 mb-3">
-                Bu semestrda <strong>{stats?.maxAttempts || 2} ta</strong> fayl
-                yuklash imkoniyati mavjud.
+                Semestr bo'yicha urinishlar holati:
               </p>
-              <div className="bg-slate-50 rounded-xl p-3">
-                <p className="text-xs text-slate-500">
-                  Jami yuklangan:{" "}
-                  <strong>{stats?.semesterSubmissions || 0}</strong>
-                </p>
-                <p className="text-xs text-slate-500 mt-1">
-                  Qolgan imkoniyat:{" "}
-                  <strong>
-                    {Math.max(
-                      0,
-                      (stats?.maxAttempts || 2) -
-                        (stats?.semesterSubmissions || 0),
-                    )}
+              <div className="bg-slate-50 rounded-xl p-3 space-y-2">
+                <div className="flex justify-between items-center">
+                  <p className="text-xs text-slate-500">Jami urinishlar:</p>
+                  <strong className="text-xs text-slate-700">{stats?.maxAttempts || 2}</strong>
+                </div>
+                <div className="flex justify-between items-center">
+                  <p className="text-xs text-slate-500">Ishlatilgan:</p>
+                  <strong className="text-xs text-slate-700">{stats?.semesterSubmissions || 0}</strong>
+                </div>
+                <div className="flex justify-between items-center border-t border-slate-200 pt-2">
+                  <p className="text-xs font-semibold text-slate-600">Qolgan urinishlar:</p>
+                  <strong className={`text-sm ${Math.max(0,(stats?.maxAttempts||2)-(stats?.semesterSubmissions||0)) === 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {Math.max(0, (stats?.maxAttempts || 2) - (stats?.semesterSubmissions || 0))}
                   </strong>
-                </p>
+                </div>
               </div>
+              {Math.max(0,(stats?.maxAttempts||2)-(stats?.semesterSubmissions||0)) === 0 && (
+                <p className="text-xs text-amber-600 mt-2 bg-amber-50 rounded-lg p-2">
+                  Barcha urinishlar ishlatildi. O'qituvchingizdan 3-imkoniyat so'rang.
+                </p>
+              )}
             </div>
           )}
           {modal === "submitted" && (

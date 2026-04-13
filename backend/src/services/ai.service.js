@@ -26,13 +26,17 @@ const groqRequest = async (params, retries = 3) => {
   }
 };
 
-// ===== 5 TA TEST SAVOL =====
+// ===== 5 TA TEST SAVOL + 2 TA MASALA (matematika uchun) =====
 const generateTests = async (extractedText, title = "Mustaqil ish") => {
   const isMath = /matematik|algebra|geometr|integral|differensial|tengla|formula|hisob|son|to'plam|funksiya|limit/i.test(extractedText + title);
 
   const latexHint = isMath
     ? `MUHIM: Matematik formulalar, tenglamalar, ifodalarni LaTeX formatida yoz. Inline uchun $formula$, blok uchun $$formula$$ ishlatama. Masalan: $x^2 + y^2 = r^2$, $\\frac{a}{b}$, $\\sqrt{x}$`
     : `Savollarni O'zbek tilida yoz.`;
+
+  const mathExtra = isMath ? `
+Bundan tashqari, 2 ta amaliy masala/misol ham qo'sh. Ular "problems" massivida bo'lsin:
+"problems":[{"id":1,"problem":"Masala matni (LaTeX bilan)","solution":"Yechim yo'li","answer":"Javob"}]` : '';
 
   const prompt = `Sen talabalar mustaqil ishini tekshiruvchi AI yordamchisan.
 
@@ -44,12 +48,12 @@ ${extractedText.substring(0, 5000)}
 ${latexHint}
 
 FAQAT JSON formatda javob ber, boshqa hech narsa yozma:
-{"questions":[{"id":1,"question":"Savol matni?","options":{"A":"variant1","B":"variant2","C":"variant3","D":"variant4"},"correctAnswer":"A","explanation":"Izoh"},{"id":2,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"B","explanation":"Izoh"},{"id":3,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"C","explanation":"Izoh"},{"id":4,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"A","explanation":"Izoh"},{"id":5,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"D","explanation":"Izoh"}]}`;
+{"questions":[{"id":1,"question":"Savol matni?","options":{"A":"variant1","B":"variant2","C":"variant3","D":"variant4"},"correctAnswer":"A","explanation":"Izoh"},{"id":2,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"B","explanation":"Izoh"},{"id":3,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"C","explanation":"Izoh"},{"id":4,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"A","explanation":"Izoh"},{"id":5,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"D","explanation":"Izoh"}]${isMath ? ',"problems":[{"id":1,"problem":"Masala?","solution":"Yechim","answer":"Javob"},{"id":2,"problem":"Masala?","solution":"Yechim","answer":"Javob"}]' : ''}}`;
 
   const completion = await groqRequest({
     model: "llama-3.3-70b-versatile",
     messages: [{ role: "user", content: prompt }],
-    max_tokens: 2000,
+    max_tokens: 2500,
     temperature: 0.3,
   });
 
@@ -71,7 +75,10 @@ FAQAT JSON formatda javob ber, boshqa hech narsa yozma:
   );
   if (!valid) throw new Error("AI savollar formati noto'g'ri");
 
-  return parsed.questions.slice(0, 5);
+  return {
+    questions: parsed.questions.slice(0, 5),
+    problems: parsed.problems || [],
+  };
 };
 
 // ===== JAVOBLARNI TEKSHIRISH =====

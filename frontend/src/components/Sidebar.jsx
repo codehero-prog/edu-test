@@ -45,7 +45,7 @@ function NavContent({ user, logout, pathname, onClose }) {
           </div>
           <div>
             <div className="font-bold text-white text-base">EduTest</div>
-            <div className="text-slate-400 text-xs">Ta'lim Tizimi</div>
+            <div className="text-slate-400 text-xs">Mustaqil Ta'lim Tizimi</div>
           </div>
         </div>
         {onClose && (

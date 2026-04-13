@@ -242,8 +242,8 @@ export default function TeacherGroups() {
       <Modal isOpen={semModal} onClose={() => setSemModal(false)} title="Yangi Semester Yaratish">
         <form onSubmit={handleCreateSemester} className="space-y-3">
           <div>
-            <label className="label">Semester nomi <span className="text-red-400">*</span></label>
-            <input type="text" placeholder="2024-2025 Bahor semestri" required className="input"
+            <label className="label">Fan nomi <span className="text-red-400">*</span></label>
+            <input type="text" placeholder="Matematika, Fizika, Informatika..." required className="input"
               value={semForm.name} onChange={e => setSemForm({ ...semForm, name: e.target.value })} />
           </div>
 
