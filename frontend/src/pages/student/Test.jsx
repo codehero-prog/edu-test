@@ -254,6 +254,15 @@ export default function StudentTest() {
           <div className="flex items-center gap-2 mb-4">
             <span className="w-8 h-8 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">{currentQ + 1}</span>
             <span className="text-xs text-slate-400 font-medium">/ {total} savol</span>
+            {q.type && (
+              <span className={`ml-auto text-xs px-2 py-0.5 rounded-full font-semibold ${
+                q.type === 'calculation'
+                  ? 'bg-indigo-100 text-indigo-700'
+                  : 'bg-emerald-100 text-emerald-700'
+              }`}>
+                {q.type === 'calculation' ? '🔢 Hisob-kitob' : '📖 Nazariy'}
+              </span>
+            )}
           </div>
           <div className="text-sm sm:text-base font-semibold text-slate-800 mb-5 leading-relaxed">
             <MathText text={q.question} />

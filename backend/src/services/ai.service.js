@@ -28,33 +28,59 @@ const groqRequest = async (params, retries = 3) => {
 
 // ===== 5 TA TEST SAVOL + 2 TA MASALA (matematika uchun) =====
 const generateTests = async (extractedText, title = "Mustaqil ish") => {
-  const isMath = /matematik|algebra|geometr|integral|differensial|tengla|formula|hisob|son|to'plam|funksiya|limit/i.test(extractedText + title);
+  const isMath = /matematik|algebra|geometr|integral|differensial|tengla|formula|hisob|son|to'plam|funksiya|limit|trigonometr|vektor|matritsa|kombinatorika|ehtimollik|statistika|logarifm|daraja/i.test(extractedText + title);
 
-  const latexHint = isMath
-    ? `MUHIM: Matematik formulalar, tenglamalar, ifodalarni LaTeX formatida yoz. Inline uchun $formula$, blok uchun $$formula$$ ishlatama. Masalan: $x^2 + y^2 = r^2$, $\\frac{a}{b}$, $\\sqrt{x}$`
-    : `Savollarni O'zbek tilida yoz.`;
+  const mathPrompt = `Sen o'zbek tilida dars beradigan matematik o'qituvchisan. Talabaning quyidagi mustaqil ishi matnini o'qib, uning mavzuni qay darajada tushunganligini aniqlaydigan 5 ta test savoli va 2 ta amaliy masala tuz.
 
-  const mathExtra = isMath ? `
-Bundan tashqari, 2 ta amaliy masala/misol ham qo'sh. Ular "problems" massivida bo'lsin:
-"problems":[{"id":1,"problem":"Masala matni (LaTeX bilan)","solution":"Yechim yo'li","answer":"Javob"}]` : '';
-
-  const prompt = `Sen talabalar mustaqil ishini tekshiruvchi AI yordamchisan.
-
-Quyidagi matn asosida 5 ta test savoli tuz:
+MATN:
 """
 ${extractedText.substring(0, 5000)}
 """
 
-${latexHint}
+QOIDALAR:
+1. Birinchi 3 ta savol (id: 1,2,3) — NAZARIY savollar bo'lsin:
+   - Ta'rif, qonun, xususiyat, teorema haqida
+   - "Qaysi ta'rif to'g'ri?", "Bu formula nima uchun ishlatiladi?" kabi
+2. Keyingi 2 ta savol (id: 4,5) — HISOB-KITOB savollari bo'lsin:
+   - Aniq raqamlar bilan hisoblash kerak bo'lsin
+   - Masalan: $\\frac{d}{dx}(x^3)$ = ?, yoki $\\int_0^1 x^2 dx$ = ?
+3. BARCHA matematik ifodalar LaTeX formatida yozilsin:
+   - Inline: $formula$ (masalan: $x^2 + 1$)
+   - Blok: $$formula$$ (masalan: $$\\frac{a^2-b^2}{a+b} = a-b$$)
+   - To'g'ri LaTeX: \\frac{a}{b}, \\sqrt{x}, \\int, \\sum, \\lim, x^{2}, x_{n}
+4. Variantlar ham LaTeX bilan yozilsin: "$2x+1$", "$$\\sqrt{3}$$"
+5. Savollar talabaning mavzuni TUSHUNGANLIGINI tekshirsin, oddiy yodlashni emas
+
+2 ta AMALIY MASALA (problems):
+- To'liq yechim ko'rsatilsin, har bir qadam LaTeX bilan
+- Mavzuga mos misol/masala bo'lsin
+- Yechim bosqichlari: "1-qadam: ...", "2-qadam: ..." ko'rinishida
 
 FAQAT JSON formatda javob ber, boshqa hech narsa yozma:
-{"questions":[{"id":1,"question":"Savol matni?","options":{"A":"variant1","B":"variant2","C":"variant3","D":"variant4"},"correctAnswer":"A","explanation":"Izoh"},{"id":2,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"B","explanation":"Izoh"},{"id":3,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"C","explanation":"Izoh"},{"id":4,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"A","explanation":"Izoh"},{"id":5,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"D","explanation":"Izoh"}]${isMath ? ',"problems":[{"id":1,"problem":"Masala?","solution":"Yechim","answer":"Javob"},{"id":2,"problem":"Masala?","solution":"Yechim","answer":"Javob"}]' : ''}}`;
+{"questions":[{"id":1,"type":"theory","question":"Nazariy savol?","options":{"A":"$variant$","B":"variant","C":"variant","D":"variant"},"correctAnswer":"A","explanation":"Izoh"},{"id":2,"type":"theory","question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"B","explanation":"Izoh"},{"id":3,"type":"theory","question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"C","explanation":"Izoh"},{"id":4,"type":"calculation","question":"$..$ = ?","options":{"A":"$...$","B":"$...$","C":"$...$","D":"$...$"},"correctAnswer":"A","explanation":"Izoh"},{"id":5,"type":"calculation","question":"Hisoblang: $...$","options":{"A":"$...$","B":"$...$","C":"$...$","D":"$...$"},"correctAnswer":"D","explanation":"Izoh"}],"problems":[{"id":1,"problem":"Masala matni $LaTeX$","solution":"1-qadam: ...\\n2-qadam: ...","answer":"$javob$"},{"id":2,"problem":"Masala matni","solution":"Yechim","answer":"$javob$"}]}`;
+
+  const generalPrompt = `Sen talabalar mustaqil ishini tekshiruvchi AI yordamchisan.
+
+Quyidagi matn asosida talabaning mavzuni qay darajada tushunganligini aniqlaydigan 5 ta test savoli tuz:
+"""
+${extractedText.substring(0, 5000)}
+"""
+
+QOIDALAR:
+1. Savollar talabaning TUSHUNISHINI tekshirsin (oddiy yodlash emas)
+2. Savollar qiyinlik darajasi bo'yicha: 2 ta oson, 2 ta o'rta, 1 ta qiyin
+3. O'zbek tilida yoz
+4. Har bir javob varianti aniq va qisqa bo'lsin
+5. Izohlar (explanation) talabaga nima noto'g'ri ekanini tushuntirsin
+
+FAQAT JSON formatda javob ber:
+{"questions":[{"id":1,"question":"Savol matni?","options":{"A":"variant1","B":"variant2","C":"variant3","D":"variant4"},"correctAnswer":"A","explanation":"Izoh"},{"id":2,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"B","explanation":"Izoh"},{"id":3,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"C","explanation":"Izoh"},{"id":4,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"A","explanation":"Izoh"},{"id":5,"question":"Savol?","options":{"A":"...","B":"...","C":"...","D":"..."},"correctAnswer":"D","explanation":"Izoh"}]}`;
 
   const completion = await groqRequest({
     model: "llama-3.3-70b-versatile",
-    messages: [{ role: "user", content: prompt }],
-    max_tokens: 2500,
-    temperature: 0.3,
+    messages: [{ role: "user", content: isMath ? mathPrompt : generalPrompt }],
+    max_tokens: 3000,
+    temperature: 0.2,
   });
 
   const text = completion.choices[0]?.message?.content || "";
@@ -78,6 +104,7 @@ FAQAT JSON formatda javob ber, boshqa hech narsa yozma:
   return {
     questions: parsed.questions.slice(0, 5),
     problems: parsed.problems || [],
+    isMath,
   };
 };
 
