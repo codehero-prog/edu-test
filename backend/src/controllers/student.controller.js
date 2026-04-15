@@ -1,143 +1,128 @@
 const prisma = require("../config/prisma");
-const { parseFile }    = require("../services/file.service");
-const { generateTests, gradeAnswers, generateFeedback } = require("../services/ai.service");
-const { uploadFile }   = require("../services/cloudinary.service");
-const { successResponse, errorResponse, paginatedResponse } = require("../utils/response");
-const { AppError }     = require("../middleware/errorHandler");
+const { parseFile } = require("../services/file.service");
+const {
+  generateTests,
+  gradeAnswers,
+  generateFeedback,
+} = require("../services/ai.service");
+const { uploadFile } = require("../services/cloudinary.service");
+const {
+  successResponse,
+  errorResponse,
+  paginatedResponse,
+} = require("../utils/response");
+const { AppError } = require("../middleware/errorHandler");
 
 // ===== UPLOAD SUBMISSION =====
 const uploadSubmission = async (req, res) => {
-  const { title } = req.body;
+  const { title, semesterId } = req.body;
   if (!title || title.trim().length < 3)
     throw new AppError("Sarlavha kamida 3 belgi bo'lishi kerak.", 400);
   if (!req.file) throw new AppError("Fayl yuklanmadi.", 400);
 
   const studentId = req.user.id;
 
-  // Semesterni tekshirish
-  const student = await prisma.user.findUnique({
-    where: { id: studentId },
-    select: { group: true, teacherId: true },
-  });
+  // Semester tekshiruvi
+  let semester = null;
+  if (semesterId) {
+    semester = await prisma.semester.findUnique({ where: { id: semesterId } });
+    if (!semester) throw new AppError("Semester topilmadi.", 404);
+    if (semester.status !== "ACTIVE")
+      throw new AppError("Bu semester faol emas.", 403);
+    if (new Date() > new Date(semester.deadline))
+      throw new AppError("Semester muddati tugagan.", 403);
 
-  if (student.group && student.teacherId) {
-    const semester = await prisma.semester.findFirst({
+    const uploadCount = await prisma.submission.count({
+      where: { studentId, semesterId },
+    });
+
+    // Extra attempt tekshiruvi
+    const hasExtra = await prisma.testResult.findFirst({
       where: {
-        teacherId: student.teacherId,
-        group: student.group,
-        isActive: true,
-      },
-    });
-
-    if (!semester) {
-      throw new AppError("Semestr hali boshlanmagan. O'qituvchingizga murojaat qiling.", 400);
-    }
-
-    const now = new Date();
-    if (now < semester.startDate) {
-      throw new AppError("Semestr hali boshlanmagan.", 400);
-    }
-    if (now > semester.deadline) {
-      throw new AppError("Semestr muddati tugagan. Fayl yuklash mumkin emas.", 400);
-    }
-
-    // 2 ta urinish limiti tekshirish
-    const submissionCount = await prisma.submission.count({
-      where: { studentId, semesterId: semester.id },
-    });
-
-    // 3-imkoniyat tekshirish
-    const hasExtraChance = await prisma.gradeReport.findFirst({
-      where: { studentId, extraChance: true },
-    });
-
-    const maxAttempts = hasExtraChance ? 3 : 2;
-    if (submissionCount >= maxAttempts) {
-      throw new AppError(`Bu semestrda maksimal ${maxAttempts} ta fayl yuklash mumkin.`, 400);
-    }
-
-    // Upload
-    const fileType  = req.fileType;
-    const buffer    = req.file.buffer;
-    const origName  = req.file.originalname;
-    const { url: fileUrl } = await uploadFile(buffer, origName);
-
-    let parsedData;
-    try { parsedData = await parseFile(buffer, fileType); }
-    catch (e) { throw new AppError(e.message, 400); }
-
-    const submission = await prisma.submission.create({
-      data: {
-        title: title.trim(), fileUrl, fileType,
-        fileName: origName,
-        extractedText: parsedData.text,
-        status: "PROCESSING",
         studentId,
-        semesterId: semester.id,
-        attemptNumber: submissionCount + 1,
+        extraAllowed: true,
+        test: { submission: { semesterId } },
       },
     });
+    const maxAllowed = hasExtra ? semester.maxUploads + 1 : semester.maxUploads;
 
-    let aiResult;
-    try { aiResult = await generateTests(parsedData.text, title); }
-    catch (e) {
-      console.error("🔴 AI XATO:", e.message);
-      await prisma.submission.update({ where: { id: submission.id }, data: { status: "FAILED" } });
-      throw new AppError("AI test yaratishda xatolik. Qayta urinib ko'ring.", 500);
-    }
-
-    const questions = aiResult.questions || aiResult;
-    const problems  = aiResult.problems  || [];
-
-    const test = await prisma.test.create({
-      data: { submissionId: submission.id, questions: { questions, problems } },
-    });
-    await prisma.submission.update({ where: { id: submission.id }, data: { status: "TESTED" } });
-
-    return successResponse(res, {
-      submissionId: submission.id, testId: test.id,
-      title: submission.title, fileType, wordCount: parsedData.wordCount,
-      attemptNumber: submission.attemptNumber, maxAttempts,
-    }, "Fayl yuklandi va testlar tayyor!", 201);
+    if (uploadCount >= maxAllowed)
+      throw new AppError(
+        `Bu semesterda maksimal ${maxAllowed} ta fayl yuklash mumkin.`,
+        403,
+      );
   }
 
-  // Semestr yo'q (eski talabalar uchun fallback)
   const fileType = req.fileType;
-  const buffer   = req.file.buffer;
+  const buffer = req.file.buffer;
   const origName = req.file.originalname;
   const { url: fileUrl } = await uploadFile(buffer, origName);
 
   let parsedData;
-  try { parsedData = await parseFile(buffer, fileType); }
-  catch (e) { throw new AppError(e.message, 400); }
+  try {
+    parsedData = await parseFile(buffer, fileType);
+  } catch (e) {
+    throw new AppError(e.message, 400);
+  }
+
+  const prevCount = semesterId
+    ? await prisma.submission.count({ where: { studentId, semesterId } })
+    : 0;
 
   const submission = await prisma.submission.create({
     data: {
-      title: title.trim(), fileUrl, fileType,
-      fileName: origName, extractedText: parsedData.text,
-      status: "PROCESSING", studentId,
+      title: title.trim(),
+      fileUrl,
+      fileType,
+      fileName: origName,
+      extractedText: parsedData.text,
+      status: "PROCESSING",
+      studentId,
+      attemptNumber: prevCount + 1,
+      ...(semesterId && { semesterId }),
     },
   });
 
-  let aiResult2;
-  try { aiResult2 = await generateTests(parsedData.text, title); }
-  catch (e) {
-    await prisma.submission.update({ where: { id: submission.id }, data: { status: "FAILED" } });
-    throw new AppError("AI test yaratishda xatolik.", 500);
+  // AI options — semester dan customPrompt va questionCount olish
+  const aiOptions = {
+    questionCount: semester?.questionCount || 5,
+    customPrompt: semester?.customPrompt || null,
+  };
+
+  let questions;
+  try {
+    questions = await generateTests(parsedData.text, title, aiOptions);
+  } catch (e) {
+    console.error("🔴 AI XATO:", e.message);
+    await prisma.submission.update({
+      where: { id: submission.id },
+      data: { status: "FAILED" },
+    });
+    throw new AppError(`AI test yaratishda xatolik: ${e.message}`, 500);
   }
 
-  const questions2 = aiResult2.questions || aiResult2;
-  const problems2  = aiResult2.problems  || [];
-
   const test = await prisma.test.create({
-    data: { submissionId: submission.id, questions: { questions: questions2, problems: problems2 } },
+    data: { submissionId: submission.id, questions },
   });
-  await prisma.submission.update({ where: { id: submission.id }, data: { status: "TESTED" } });
+  await prisma.submission.update({
+    where: { id: submission.id },
+    data: { status: "TESTED" },
+  });
 
-  return successResponse(res, {
-    submissionId: submission.id, testId: test.id,
-    title: submission.title, fileType, wordCount: parsedData.wordCount,
-  }, "Fayl yuklandi va testlar tayyor!", 201);
+  return successResponse(
+    res,
+    {
+      submissionId: submission.id,
+      testId: test.id,
+      title: submission.title,
+      fileType,
+      wordCount: parsedData.wordCount,
+      attemptNumber: submission.attemptNumber,
+      totalQuestions: questions.length,
+    },
+    "Fayl yuklandi va testlar tayyor!",
+    201,
+  );
 };
 
 // ===== GET TEST QUESTIONS =====
@@ -147,106 +132,199 @@ const getTestQuestions = async (req, res) => {
     where: { id: testId },
     include: {
       submission: { select: { studentId: true, title: true } },
-      results: { where: { studentId: req.user.id }, select: { id: true } },
+      results: {
+        where: { studentId: req.user.id },
+        select: { id: true, extraAllowed: true },
+      },
     },
   });
   if (!test) return errorResponse(res, "Test topilmadi.", 404);
   if (test.submission.studentId !== req.user.id)
     return errorResponse(res, "Bu test sizga tegishli emas.", 403);
-  if (test.results.length > 0)
-    return errorResponse(res, "Siz bu testni allaqachon topshirgansiz.", 400);
 
-  const rawQuestions = Array.isArray(test.questions)
-    ? test.questions
-    : (test.questions?.questions || []);
-  const problems = test.questions?.problems || [];
+  const attempts = test.results.length;
+  const extraAllowed = test.results.some((r) => r.extraAllowed);
+  const maxAttempts = extraAllowed ? 3 : 2;
 
-  const safeQuestions = rawQuestions.map((q, i) => ({
-    id: i + 1, question: q.question, options: q.options,
+  if (attempts >= maxAttempts)
+    return errorResponse(
+      res,
+      `Siz bu testni allaqachon ${attempts} marta topshirgansiz.`,
+      400,
+    );
+
+  const safeQuestions = test.questions.map((q, i) => ({
+    id: i + 1,
+    question: q.question,
+    options: q.options,
   }));
 
-  return successResponse(res, {
-    testId: test.id, submissionTitle: test.submission.title,
-    questions: safeQuestions, totalQuestions: safeQuestions.length,
-    problems,
-  }, "Test savollar yuklandi");
+  return successResponse(
+    res,
+    {
+      testId: test.id,
+      submissionTitle: test.submission.title,
+      questions: safeQuestions,
+      totalQuestions: safeQuestions.length,
+      attemptNumber: attempts + 1,
+      maxAttempts,
+    },
+    "Test savollar yuklandi",
+  );
 };
 
 // ===== SUBMIT TEST =====
 const submitTestAnswers = async (req, res) => {
   const { testId } = req.params;
   const { answers } = req.body;
-  if (!answers || !Array.isArray(answers) || answers.length !== 5)
-    throw new AppError("5 ta savolga ham javob bering.", 400);
 
   const test = await prisma.test.findUnique({
     where: { id: testId },
     include: {
       submission: { select: { studentId: true, extractedText: true } },
-      results: { where: { studentId: req.user.id }, select: { id: true } },
+      results: {
+        where: { studentId: req.user.id },
+        select: { id: true, extraAllowed: true },
+      },
     },
   });
   if (!test) return errorResponse(res, "Test topilmadi.", 404);
   if (test.submission.studentId !== req.user.id)
     return errorResponse(res, "Bu test sizga tegishli emas.", 403);
-  if (test.results.length > 0)
-    return errorResponse(res, "Siz bu testni allaqachon topshirgansiz.", 400);
+
+  const attempts = test.results.length;
+  const extraAllowed = test.results.some((r) => r.extraAllowed);
+  const maxAttempts = extraAllowed ? 3 : 2;
+
+  if (attempts >= maxAttempts)
+    return errorResponse(
+      res,
+      `Maksimal urinishlar soni tugadi (${maxAttempts}).`,
+      400,
+    );
+
+  const total = test.questions.length;
+  if (!answers || !Array.isArray(answers) || answers.length !== total)
+    throw new AppError(`${total} ta savolga ham javob bering.`, 400);
 
   const { correctCount, percentage, grade, gradeNumber, results } =
-    await gradeAnswers(
-      Array.isArray(test.questions) ? test.questions : (test.questions?.questions || []),
-      answers
-    );
+    await gradeAnswers(test.questions, answers);
 
   let feedback = "";
   try {
-    feedback = await generateFeedback(test.submission.extractedText, correctCount, percentage, results);
+    feedback = await generateFeedback(
+      test.submission.extractedText,
+      correctCount,
+      percentage,
+      results,
+    );
   } catch {
-    feedback = `${correctCount}/5 to'g'ri javob. Ball: ${percentage.toFixed(0)}%`;
+    feedback = `${correctCount}/${total} to'g'ri javob. Foiz: ${percentage.toFixed(0)}%`;
   }
 
   const testResult = await prisma.testResult.create({
-    data: { testId, studentId: req.user.id, answers, score: correctCount, percentage, grade, gradeNumber, feedback },
-  });
-
-  await prisma.gradeReport.create({
     data: {
-      submissionId: test.submissionId, studentId: req.user.id,
-      testResultId: testResult.id, grade, gradeNumber, percentage, aiSummary: feedback,
+      testId,
+      studentId: req.user.id,
+      answers,
+      score: correctCount,
+      percentage,
+      grade,
+      gradeNumber,
+      feedback,
     },
   });
 
-  await prisma.submission.update({ where: { id: test.submissionId }, data: { status: "GRADED" } });
+  // GradeReport — eng yaxshi natija saqlanadi
+  const existingReport = await prisma.gradeReport.findUnique({
+    where: { submissionId: test.submissionId },
+  });
 
-  return successResponse(res, {
-    score: correctCount, totalQuestions: 5, percentage,
-    grade, gradeNumber, feedback, detailedResults: results,
-  }, "Test natijasi saqlandi!");
+  if (!existingReport || gradeNumber >= existingReport.gradeNumber) {
+    if (existingReport) {
+      await prisma.gradeReport.update({
+        where: { submissionId: test.submissionId },
+        data: {
+          grade,
+          gradeNumber,
+          percentage,
+          aiSummary: feedback,
+          testResultId: testResult.id,
+        },
+      });
+    } else {
+      await prisma.gradeReport.create({
+        data: {
+          submissionId: test.submissionId,
+          studentId: req.user.id,
+          testResultId: testResult.id,
+          grade,
+          gradeNumber,
+          percentage,
+          aiSummary: feedback,
+        },
+      });
+    }
+  }
+
+  await prisma.submission.update({
+    where: { id: test.submissionId },
+    data: { status: "GRADED" },
+  });
+
+  return successResponse(
+    res,
+    {
+      score: correctCount,
+      totalQuestions: total,
+      percentage,
+      grade,
+      gradeNumber,
+      feedback,
+      detailedResults: results,
+      attemptNumber: attempts + 1,
+    },
+    "Test natijasi saqlandi!",
+  );
 };
 
 // ===== GET MY SUBMISSIONS =====
 const getMySubmissions = async (req, res) => {
-  const page  = parseInt(req.query.page)  || 1;
-  const limit = parseInt(req.query.limit) || 10;
-  const skip  = (page - 1) * limit;
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 15;
+  const skip = (page - 1) * limit;
 
   const [submissions, total] = await Promise.all([
     prisma.submission.findMany({
       where: { studentId: req.user.id },
-      skip, take: limit,
+      skip,
+      take: limit,
       select: {
-        id: true, title: true, fileType: true, fileName: true,
-        fileUrl: true, status: true, attemptNumber: true, createdAt: true,
+        id: true,
+        title: true,
+        fileType: true,
+        fileName: true,
+        fileUrl: true,
+        status: true,
+        attemptNumber: true,
+        createdAt: true,
+        semester: { select: { id: true, name: true, subject: true } },
         tests: { select: { id: true } },
-        gradeReport: { select: { gradeNumber: true, percentage: true, grade: true } },
+        gradeReport: {
+          select: { gradeNumber: true, percentage: true, grade: true },
+        },
       },
       orderBy: { createdAt: "desc" },
     }),
     prisma.submission.count({ where: { studentId: req.user.id } }),
   ]);
 
-  return paginatedResponse(res, { submissions },
-    { total, page, limit, totalPages: Math.ceil(total / limit) }, "Ishlar");
+  return paginatedResponse(
+    res,
+    { submissions },
+    { total, page, limit, totalPages: Math.ceil(total / limit) },
+    "Ishlar",
+  );
 };
 
 // ===== GET SUBMISSION RESULT =====
@@ -255,14 +333,23 @@ const getSubmissionResult = async (req, res) => {
   const submission = await prisma.submission.findFirst({
     where: { id: submissionId, studentId: req.user.id },
     include: {
+      semester: { select: { name: true, subject: true } },
       tests: {
         include: {
           results: {
             where: { studentId: req.user.id },
             select: {
-              score: true, percentage: true, grade: true,
-              gradeNumber: true, feedback: true, answers: true, submittedAt: true,
+              id: true,
+              score: true,
+              percentage: true,
+              grade: true,
+              gradeNumber: true,
+              feedback: true,
+              answers: true,
+              submittedAt: true,
+              extraAllowed: true,
             },
+            orderBy: { submittedAt: "asc" },
           },
         },
       },
@@ -273,119 +360,75 @@ const getSubmissionResult = async (req, res) => {
   return successResponse(res, { submission }, "Natija yuklandi");
 };
 
-// ===== DASHBOARD STATS =====
-const getDashboardStats = async (req, res) => {
-  const studentId = req.user.id;
-  const student   = await prisma.user.findUnique({
-    where: { id: studentId }, select: { group: true, teacherId: true },
-  });
-
-  const [totalSubmissions, gradedSubmissions, avgGrade, recentSubmissions] = await Promise.all([
-    prisma.submission.count({ where: { studentId } }),
-    prisma.submission.count({ where: { studentId, status: "GRADED" } }),
-    prisma.gradeReport.aggregate({
-      where: { studentId }, _avg: { gradeNumber: true, percentage: true },
-    }),
-    prisma.submission.findMany({
-      where: { studentId }, take: 5, orderBy: { createdAt: "desc" },
-      select: {
-        id: true, title: true, status: true, fileType: true, createdAt: true, attemptNumber: true,
-        gradeReport: { select: { gradeNumber: true, percentage: true } },
-        tests: { select: { id: true } },
-      },
-    }),
-  ]);
-
-  // Aktiv semestr
-  let semester = null;
-  if (student.group && student.teacherId) {
-    semester = await prisma.semester.findFirst({
-      where: { teacherId: student.teacherId, group: student.group, isActive: true },
-      orderBy: { createdAt: "desc" },
-    });
-  }
-
-  // Bu semestrda nechta fayl yuklanganini
-  let semesterSubmissions = 0;
-  let maxAttempts = 2;
-  if (semester) {
-    semesterSubmissions = await prisma.submission.count({
-      where: { studentId, semesterId: semester.id },
-    });
-    const hasExtraChance = await prisma.gradeReport.findFirst({
-      where: { studentId, extraChance: true },
-    });
-    if (hasExtraChance) maxAttempts = 3;
-  }
-
-  return successResponse(res, {
-    stats: {
-      totalSubmissions, gradedSubmissions,
-      pendingSubmissions: totalSubmissions - gradedSubmissions,
-      notSubmitted: Math.max(0, maxAttempts - semesterSubmissions),
-      avgGrade:      avgGrade._avg.gradeNumber?.toFixed(1) || null,
-      avgPercentage: avgGrade._avg.percentage?.toFixed(1)  || null,
-      recentSubmissions, semester, semesterSubmissions, maxAttempts,
-    },
-  }, "Dashboard");
-};
-
-// ===== GET SEMESTER INFO =====
-const getSemesterInfo = async (req, res) => {
+// ===== GET ACTIVE SEMESTERS =====
+const getActiveSemesters = async (req, res) => {
   const student = await prisma.user.findUnique({
-    where: { id: req.user.id }, select: { group: true, teacherId: true },
+    where: { id: req.user.id },
+    select: { group: true },
   });
-  if (!student.group || !student.teacherId)
-    return successResponse(res, { semester: null }, "Semestr yo'q");
+  if (!student?.group)
+    return successResponse(res, { semesters: [] }, "Guruh topilmadi");
 
-  const semester = await prisma.semester.findFirst({
-    where: { teacherId: student.teacherId, group: student.group, isActive: true },
+  const semesters = await prisma.semester.findMany({
+    where: {
+      groupName: student.group,
+      status: "ACTIVE",
+      deadline: { gte: new Date() },
+    },
+    include: { teacher: { select: { name: true } } },
     orderBy: { createdAt: "desc" },
   });
 
-  let submissionCount = 0;
-  let maxAttempts = 2;
-  if (semester) {
-    submissionCount = await prisma.submission.count({
-      where: { studentId: req.user.id, semesterId: semester.id },
-    });
-    const hasExtra = await prisma.gradeReport.findFirst({
-      where: { studentId: req.user.id, extraChance: true },
-    });
-    if (hasExtra) maxAttempts = 3;
-  }
+  const semestersWithCount = await Promise.all(
+    semesters.map(async (sem) => {
+      const myUploadCount = await prisma.submission.count({
+        where: { studentId: req.user.id, semesterId: sem.id },
+      });
+      return { ...sem, myUploadCount };
+    }),
+  );
 
-  return successResponse(res, {
-    semester, submissionCount, maxAttempts,
-    canUpload: semester
-      ? (new Date() >= new Date(semester.startDate) &&
-         new Date() <= new Date(semester.deadline) &&
-         submissionCount < maxAttempts)
-      : false,
-  }, "Semestr ma'lumotlari");
+  return successResponse(
+    res,
+    { semesters: semestersWithCount },
+    "Faol semesterlar",
+  );
 };
 
-// ===== DOWNLOAD FILE =====
-const downloadFile = async (req, res) => {
-  const submission = await prisma.submission.findFirst({
-    where: { id: req.params.submissionId, studentId: req.user.id },
-    select: { fileUrl: true, fileName: true, fileType: true },
-  });
-  if (!submission) throw new AppError("Fayl topilmadi.", 404);
+// ===== DASHBOARD STATS =====
+const getDashboardStats = async (req, res) => {
+  const studentId = req.user.id;
 
-  const response = await fetch(submission.fileUrl);
-  if (!response.ok) throw new AppError("Fayl yuklab bo'lmadi.", 500);
+  const [total, graded, reports] = await Promise.all([
+    prisma.submission.count({ where: { studentId } }),
+    prisma.submission.count({ where: { studentId, status: "GRADED" } }),
+    prisma.gradeReport.aggregate({
+      where: { studentId },
+      _avg: { gradeNumber: true, percentage: true },
+    }),
+  ]);
 
-  const buffer = await response.arrayBuffer();
-  const safeName = encodeURIComponent(submission.fileName);
-
-  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${safeName}`);
-  res.setHeader("Content-Type", "application/octet-stream");
-  res.send(Buffer.from(buffer));
+  return successResponse(
+    res,
+    {
+      stats: {
+        totalSubmissions: total,
+        gradedSubmissions: graded,
+        pendingSubmissions: total - graded,
+        avgGrade: reports._avg.gradeNumber?.toFixed(1) || null,
+        avgPercentage: reports._avg.percentage?.toFixed(1) || null,
+      },
+    },
+    "Dashboard",
+  );
 };
 
 module.exports = {
-  uploadSubmission, getTestQuestions, submitTestAnswers,
-  getMySubmissions, getSubmissionResult, getDashboardStats, getSemesterInfo,
-  downloadFile,
+  uploadSubmission,
+  getTestQuestions,
+  submitTestAnswers,
+  getMySubmissions,
+  getSubmissionResult,
+  getDashboardStats,
+  getActiveSemesters,
 };

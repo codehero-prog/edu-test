@@ -34,45 +34,53 @@ enum SubmissionStatus {
   FAILED
 }
 
-// ===== SEMESTER =====
+enum SemesterStatus {
+  ACTIVE
+  FINISHED
+}
+
 model Semester {
-  id        String   @id @default(cuid())
-  name      String   // "2024-2025 Bahor"
-  group     String   // "1-A"
-  teacherId String
-  teacher   User     @relation("TeacherSemesters", fields: [teacherId], references: [id], onDelete: Cascade)
-  startDate DateTime
-  deadline  DateTime
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String         @id @default(cuid())
+  name          String
+  groupName     String
+  subject       String
+  deadline      DateTime
+  status        SemesterStatus @default(ACTIVE)
+  maxUploads    Int            @default(2)
+  questionCount Int            @default(5)
+  customPrompt  String?        @db.Text
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  teacherId   String
+  teacher     User         @relation("TeacherSemesters", fields: [teacherId], references: [id], onDelete: Cascade)
+  submissions Submission[]
 
   @@map("semesters")
 }
 
 model User {
-  id       String  @id @default(cuid())
-  name     String
-  email    String  @unique
-  password String
-  role     Role    @default(STUDENT)
-  subject  String?
-  groups   String[] @default([])
-  group    String?
-  isActive Boolean  @default(true)
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(STUDENT)
+  subject   String?
+  groups    String[] @default([])
+  group     String?
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   createdById  String?
-  createdBy    User?   @relation("CreatedUsers",   fields: [createdById], references: [id])
+  createdBy    User?   @relation("CreatedUsers", fields: [createdById], references: [id])
   createdUsers User[]  @relation("CreatedUsers")
 
   teacherId String?
   teacher   User?   @relation("TeacherStudents", fields: [teacherId], references: [id])
   students  User[]  @relation("TeacherStudents")
 
-  semesters Semester[] @relation("TeacherSemesters")
-
+  semesters    Semester[]    @relation("TeacherSemesters")
   submissions  Submission[]
   testResults  TestResult[]
   gradeReports GradeReport[]
@@ -88,13 +96,15 @@ model Submission {
   fileName      String
   extractedText String?          @db.Text
   status        SubmissionStatus @default(UPLOADED)
-  semesterId    String?          // Qaysi semestrga tegishli
-  attemptNumber Int              @default(1) // 1 yoki 2
+  attemptNumber Int              @default(1)
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
-  studentId String
-  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    User      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  semesterId String?
+  semester   Semester? @relation(fields: [semesterId], references: [id], onDelete: SetNull)
 
   tests       Test[]
   gradeReport GradeReport?
@@ -116,18 +126,18 @@ model Test {
 }
 
 model TestResult {
-  id          String   @id @default(cuid())
-  answers     Json
-  score       Int
-  percentage  Float
-  grade       Grade
-  gradeNumber Int
-  feedback    String?  @db.Text
-  submittedAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  answers      Json
+  score        Int
+  percentage   Float
+  grade        Grade
+  gradeNumber  Int
+  feedback     String?  @db.Text
+  extraAllowed Boolean  @default(false)
+  submittedAt  DateTime @default(now())
 
-  testId String
-  test   Test   @relation(fields: [testId], references: [id], onDelete: Cascade)
-
+  testId    String
+  test      Test   @relation(fields: [testId], references: [id], onDelete: Cascade)
   studentId String
   student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
@@ -142,15 +152,12 @@ model GradeReport {
   gradeNumber Int
   percentage  Float
   aiSummary   String?  @db.Text
-  extraChance Boolean  @default(false) // Teacher 3-imkoniyat berdi
   createdAt   DateTime @default(now())
 
   submissionId String     @unique
   submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-
-  studentId String
-  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
+  studentId    String
+  student      User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
   testResultId String     @unique
   testResult   TestResult @relation(fields: [testResultId], references: [id])
 
