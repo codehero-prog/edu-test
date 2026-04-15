@@ -2,16 +2,21 @@ const { z } = require("zod");
 const prisma = require("../config/prisma");
 const { successResponse, errorResponse } = require("../utils/response");
 
+const toInt = (val, def) => { const n = parseInt(val); return isNaN(n) ? def : n; };
+
 // ===== CREATE =====
 const createSemester = async (req, res) => {
+  req.body.maxUploads    = toInt(req.body.maxUploads, 2);
+  req.body.questionCount = toInt(req.body.questionCount, 5);
+
   const schema = z.object({
-    name: z.string().min(2),
-    groupName: z.string().min(1),
-    subject: z.string().min(1),
-    deadline: z.string().min(1),
-    maxUploads: z.number().int().min(1).max(10).default(2),
+    name:          z.string().min(2),
+    groupName:     z.string().min(1),
+    subject:       z.string().min(1),
+    deadline:      z.string().min(1),
+    maxUploads:    z.number().int().min(1).max(10).default(2),
     questionCount: z.number().int().min(1).max(30).default(5),
-    customPrompt: z.string().max(1000).optional().nullable(),
+    customPrompt:  z.string().max(1000).optional().nullable(),
   });
 
   const data = schema.parse(req.body);
@@ -30,15 +35,15 @@ const createSemester = async (req, res) => {
 
   const semester = await prisma.semester.create({
     data: {
-      name: data.name,
-      groupName: data.groupName,
-      subject: data.subject,
-      deadline: new Date(data.deadline),
-      maxUploads: data.maxUploads,
+      name:          data.name,
+      groupName:     data.groupName,
+      subject:       data.subject,
+      deadline:      new Date(data.deadline),
+      maxUploads:    data.maxUploads,
       questionCount: data.questionCount,
-      customPrompt: data.customPrompt || null,
-      status: "ACTIVE",
-      teacherId: req.user.id,
+      customPrompt:  data.customPrompt || null,
+      status:        "ACTIVE",
+      teacherId:     req.user.id,
     },
   });
 
@@ -62,13 +67,17 @@ const getSemesters = async (req, res) => {
 // ===== UPDATE =====
 const updateSemester = async (req, res) => {
   const { semesterId } = req.params;
+
+  if (req.body.maxUploads    != null) req.body.maxUploads    = toInt(req.body.maxUploads, 2);
+  if (req.body.questionCount != null) req.body.questionCount = toInt(req.body.questionCount, 5);
+
   const schema = z.object({
-    name: z.string().min(2).optional(),
-    deadline: z.string().min(1).optional(),
-    status: z.enum(["ACTIVE", "FINISHED"]).optional(),
-    maxUploads: z.number().int().min(1).max(10).optional(),
+    name:          z.string().min(2).optional(),
+    deadline:      z.string().min(1).optional(),
+    status:        z.enum(["ACTIVE", "FINISHED"]).optional(),
+    maxUploads:    z.number().int().min(1).max(10).optional(),
     questionCount: z.number().int().min(1).max(30).optional(),
-    customPrompt: z.string().max(1000).optional().nullable(),
+    customPrompt:  z.string().max(1000).optional().nullable(),
   });
 
   const data = schema.parse(req.body);
@@ -111,11 +120,7 @@ const allowExtraAttempt = async (req, res) => {
     where: { id: resultId },
     data: { extraAllowed: true },
   });
-  return successResponse(
-    res,
-    { result: updated },
-    "3-urinishga ruxsat berildi",
-  );
+  return successResponse(res, { result: updated }, "3-urinishga ruxsat berildi");
 };
 
 module.exports = {
