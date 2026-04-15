@@ -2,14 +2,17 @@ const { z } = require("zod");
 const prisma = require("../config/prisma");
 const { successResponse, errorResponse } = require("../utils/response");
 
-const toInt = (val) => (typeof val === "string" ? parseInt(val) : val);
+const toInt = (val, def) => {
+  const n = parseInt(val);
+  return isNaN(n) ? def : n;
+};
 
 // ===== CREATE =====
 const createSemester = async (req, res) => {
   const body = {
     ...req.body,
-    maxUploads:    toInt(req.body.maxUploads),
-    questionCount: toInt(req.body.questionCount),
+    maxUploads:    toInt(req.body.maxUploads, 2),
+    questionCount: toInt(req.body.questionCount, 5),
   };
 
   const schema = z.object({
@@ -73,8 +76,8 @@ const updateSemester = async (req, res) => {
 
   const body = {
     ...req.body,
-    ...(req.body.maxUploads    != null && { maxUploads:    toInt(req.body.maxUploads) }),
-    ...(req.body.questionCount != null && { questionCount: toInt(req.body.questionCount) }),
+    ...(req.body.maxUploads    != null && { maxUploads:    toInt(req.body.maxUploads, 2) }),
+    ...(req.body.questionCount != null && { questionCount: toInt(req.body.questionCount, 5) }),
   };
 
   const schema = z.object({
