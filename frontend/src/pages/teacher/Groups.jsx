@@ -97,24 +97,12 @@ export default function TeacherGroups() {
     e.preventDefault();
     setSemSubmitting(true);
     try {
-      const deadline = new Date(semForm.deadline).toISOString();
       await api.post("/teacher/semesters", {
         ...semForm,
-        deadline,
-        maxUploads: parseInt(semForm.maxUploads),
-        questionCount: parseInt(semForm.questionCount),
+        maxUploads: parseInt(semForm.maxUploads), // ← shu qator kerak
       });
       toast.success("Semester yaratildi!");
       setSemModal(false);
-      setSemForm({
-        name: "",
-        groupName: "",
-        subject: "",
-        deadline: "",
-        maxUploads: 2,
-        questionCount: 5,
-        customPrompt: "",
-      });
       fetchSemesters();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Xatolik");

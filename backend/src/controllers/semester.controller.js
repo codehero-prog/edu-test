@@ -7,14 +7,12 @@ const toInt = (val, def) => {
   return isNaN(n) ? def : n;
 };
 
-// ===== CREATE =====
 const createSemester = async (req, res) => {
   const body = {
     ...req.body,
     maxUploads: toInt(req.body.maxUploads, 2),
     questionCount: toInt(req.body.questionCount, 5),
   };
-
   const schema = z.object({
     name: z.string().min(2),
     groupName: z.string().min(1),
@@ -24,21 +22,17 @@ const createSemester = async (req, res) => {
     questionCount: z.number().int().min(1).max(30).default(5),
     customPrompt: z.string().max(1000).optional().nullable(),
   });
-
   const data = schema.parse(body);
-
   const teacher = await prisma.user.findUnique({
     where: { id: req.user.id },
     select: { groups: true },
   });
-
   if (teacher.groups.length > 0 && !teacher.groups.includes(data.groupName))
     return errorResponse(
       res,
-      `Faqat o'z guruhlaringizga semester yarata olasiz: ${teacher.groups.join(", ")}`,
+      "Faqat o'z guruhlaringizga semester yarata olasiz",
       403,
     );
-
   const semester = await prisma.semester.create({
     data: {
       name: data.name,
@@ -52,28 +46,21 @@ const createSemester = async (req, res) => {
       teacherId: req.user.id,
     },
   });
-
   return successResponse(res, { semester }, "Semester yaratildi", 201);
 };
 
-// ===== GET LIST =====
 const getSemesters = async (req, res) => {
   const group = req.query.group || undefined;
   const semesters = await prisma.semester.findMany({
-    where: {
-      teacherId: req.user.id,
-      ...(group && { groupName: group }),
-    },
+    where: { teacherId: req.user.id, ...(group && { groupName: group }) },
     include: { _count: { select: { submissions: true } } },
     orderBy: { createdAt: "desc" },
   });
   return successResponse(res, { semesters }, "Semesterlar ro'yxati");
 };
 
-// ===== UPDATE =====
 const updateSemester = async (req, res) => {
   const { semesterId } = req.params;
-
   const body = {
     ...req.body,
     ...(req.body.maxUploads != null && {
@@ -83,7 +70,6 @@ const updateSemester = async (req, res) => {
       questionCount: toInt(req.body.questionCount, 5),
     }),
   };
-
   const schema = z.object({
     name: z.string().min(2).optional(),
     deadline: z.string().min(1).optional(),
@@ -92,14 +78,11 @@ const updateSemester = async (req, res) => {
     questionCount: z.number().int().min(1).max(30).optional(),
     customPrompt: z.string().max(1000).optional().nullable(),
   });
-
   const data = schema.parse(body);
-
   const semester = await prisma.semester.findFirst({
     where: { id: semesterId, teacherId: req.user.id },
   });
   if (!semester) return errorResponse(res, "Semester topilmadi.", 404);
-
   const updated = await prisma.semester.update({
     where: { id: semesterId },
     data: {
@@ -107,11 +90,9 @@ const updateSemester = async (req, res) => {
       ...(data.deadline && { deadline: new Date(data.deadline) }),
     },
   });
-
   return successResponse(res, { semester: updated }, "Semester yangilandi");
 };
 
-// ===== DELETE =====
 const deleteSemester = async (req, res) => {
   const { semesterId } = req.params;
   const semester = await prisma.semester.findFirst({
@@ -122,7 +103,6 @@ const deleteSemester = async (req, res) => {
   return successResponse(res, null, "Semester o'chirildi");
 };
 
-// ===== ALLOW EXTRA ATTEMPT =====
 const allowExtraAttempt = async (req, res) => {
   const { resultId } = req.params;
   const result = await prisma.testResult.findFirst({
