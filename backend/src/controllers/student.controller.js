@@ -27,7 +27,7 @@ const uploadSubmission = async (req, res) => {
   if (semesterId) {
     semester = await prisma.semester.findUnique({ where: { id: semesterId } });
     if (!semester) throw new AppError("Semester topilmadi.", 404);
-    if (semester.status !== "ACTIVE")
+    if (!semester.isActive)
       throw new AppError("Bu semester faol emas.", 403);
     if (new Date() > new Date(semester.deadline))
       throw new AppError("Semester muddati tugagan.", 403);
@@ -44,7 +44,8 @@ const uploadSubmission = async (req, res) => {
         test: { submission: { semesterId } },
       },
     });
-    const maxAllowed = hasExtra ? semester.maxUploads + 1 : semester.maxUploads;
+    const maxUploads = semester.maxUploads || 2;
+    const maxAllowed = hasExtra ? maxUploads + 1 : maxUploads;
 
     if (uploadCount >= maxAllowed)
       throw new AppError(
@@ -308,7 +309,7 @@ const getMySubmissions = async (req, res) => {
         status: true,
         attemptNumber: true,
         createdAt: true,
-        semester: { select: { id: true, name: true, subject: true } },
+        semester: { select: { id: true, name: true } },
         tests: { select: { id: true } },
         gradeReport: {
           select: { gradeNumber: true, percentage: true, grade: true },
@@ -333,7 +334,7 @@ const getSubmissionResult = async (req, res) => {
   const submission = await prisma.submission.findFirst({
     where: { id: submissionId, studentId: req.user.id },
     include: {
-      semester: { select: { name: true, subject: true } },
+      semester: { select: { name: true } },
       tests: {
         include: {
           results: {
@@ -371,8 +372,8 @@ const getActiveSemesters = async (req, res) => {
 
   const semesters = await prisma.semester.findMany({
     where: {
-      groupName: student.group,
-      status: "ACTIVE",
+      group: student.group,
+      isActive: true,
       deadline: { gte: new Date() },
     },
     include: { teacher: { select: { name: true } } },
@@ -399,12 +400,49 @@ const getActiveSemesters = async (req, res) => {
 const getDashboardStats = async (req, res) => {
   const studentId = req.user.id;
 
-  const [total, graded, reports] = await Promise.all([
+  const student = await prisma.user.findUnique({
+    where: { id: studentId },
+    select: { group: true },
+  });
+
+  // Faol semesterni topish
+  const semester = student?.group
+    ? await prisma.semester.findFirst({
+        where: {
+          group: student.group,
+          isActive: true,
+          deadline: { gte: new Date() },
+        },
+        orderBy: { createdAt: "desc" },
+      })
+    : null;
+
+  const semesterSubmissions = semester
+    ? await prisma.submission.count({ where: { studentId, semesterId: semester.id } })
+    : 0;
+
+  const maxAttempts = semester?.maxUploads || 2;
+
+  const [total, graded, reports, recentSubmissions] = await Promise.all([
     prisma.submission.count({ where: { studentId } }),
     prisma.submission.count({ where: { studentId, status: "GRADED" } }),
     prisma.gradeReport.aggregate({
       where: { studentId },
       _avg: { gradeNumber: true, percentage: true },
+    }),
+    prisma.submission.findMany({
+      where: { studentId },
+      take: 5,
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        fileType: true,
+        status: true,
+        createdAt: true,
+        tests: { select: { id: true } },
+        gradeReport: { select: { gradeNumber: true, percentage: true } },
+      },
     }),
   ]);
 
@@ -415,8 +453,13 @@ const getDashboardStats = async (req, res) => {
         totalSubmissions: total,
         gradedSubmissions: graded,
         pendingSubmissions: total - graded,
+        notSubmitted: Math.max(0, maxAttempts - semesterSubmissions),
+        semesterSubmissions,
+        maxAttempts,
         avgGrade: reports._avg.gradeNumber?.toFixed(1) || null,
         avgPercentage: reports._avg.percentage?.toFixed(1) || null,
+        semester,
+        recentSubmissions,
       },
     },
     "Dashboard",

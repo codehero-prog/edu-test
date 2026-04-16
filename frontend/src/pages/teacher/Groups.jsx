@@ -97,27 +97,22 @@ export default function TeacherGroups() {
     e.preventDefault();
     setSemSubmitting(true);
     try {
-      await api.post("/teacher/semesters", {
-        ...semForm,
-        maxUploads: parseInt(semForm.maxUploads), // ← shu qator kerak
-      });
+      const payload = {
+        name: semForm.name,
+        group: semForm.groupName,
+        startDate: new Date().toISOString(),
+        deadline: new Date(semForm.deadline).toISOString(),
+      };
+      await api.post("/teacher/semesters", payload);
       toast.success("Semester yaratildi!");
       setSemModal(false);
+      setSemForm({ name: "", groupName: "", subject: "", deadline: "", maxUploads: 2, questionCount: 5, customPrompt: "" });
       fetchSemesters();
     } catch (err) {
+      console.error("❌ Semester xato:", err?.response?.data);
       toast.error(err?.response?.data?.message || "Xatolik");
     } finally {
       setSemSubmitting(false);
-    }
-  };
-
-  const handleFinishSemester = async (id) => {
-    try {
-      await api.patch(`/teacher/semesters/${id}`, { status: "FINISHED" });
-      toast.success("Semester tugatildi");
-      fetchSemesters();
-    } catch {
-      toast.error("Xatolik");
     }
   };
 
@@ -146,7 +141,7 @@ export default function TeacherGroups() {
 
   // Guruhlar bo'yicha semesterlarni guruhlash
   const groupedSemesters = myGroups.reduce((acc, g) => {
-    acc[g] = semesters.filter((s) => s.groupName === g);
+    acc[g] = semesters.filter((s) => s.group === g);
     return acc;
   }, {});
 
@@ -176,7 +171,7 @@ export default function TeacherGroups() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {myGroups.map((group) => {
               const groupSems = groupedSemesters[group] || [];
-              const activeSem = groupSems.find((s) => s.status === "ACTIVE");
+              const activeSem = groupSems.find((s) => s.isActive);
               return (
                 <div key={group} className="card overflow-hidden">
                   {/* Group header */}
@@ -212,11 +207,9 @@ export default function TeacherGroups() {
                             key={sem.id}
                             className={cn(
                               "rounded-xl p-3 border",
-                              sem.status === "ACTIVE"
+                              sem.isActive
                                 ? "border-emerald-200 bg-emerald-50"
-                                : sem.status === "FINISHED"
-                                  ? "border-slate-200 bg-slate-50 opacity-60"
-                                  : "border-amber-200 bg-amber-50",
+                                : "border-slate-200 bg-slate-50 opacity-60",
                             )}
                           >
                             <div className="flex items-start justify-between gap-2">
@@ -249,41 +242,35 @@ export default function TeacherGroups() {
                                   <span
                                     className={cn(
                                       "badge text-xs",
-                                      sem.status === "ACTIVE"
+                                      sem.isActive
                                         ? "bg-emerald-100 text-emerald-700 border-emerald-200"
                                         : "bg-slate-100 text-slate-600 border-slate-200",
                                     )}
                                   >
-                                    {sem.status === "ACTIVE"
-                                      ? "Faol"
-                                      : sem.status === "FINISHED"
-                                        ? "Tugagan"
-                                        : "Kutmoqda"}
+                                    {sem.isActive ? "Faol" : "Tugagan"}
                                   </span>
                                   <span className="text-xs text-slate-400">
-                                    {sem._count?.submissions || 0} ta ish
+                                    {sem.deadline ? new Date(sem.deadline).toLocaleDateString("uz-UZ") : ""}
                                   </span>
                                 </div>
                               </div>
-                              {sem.status === "ACTIVE" && (
+                              {sem.isActive && (
                                 <button
                                   onClick={() =>
                                     toast.promise(
                                       api
-                                        .patch(`/teacher/semesters/${sem.id}`, {
-                                          status: "FINISHED",
-                                        })
+                                        .delete(`/teacher/semesters/${sem.id}`)
                                         .then(() => fetchSemesters()),
                                       {
                                         loading: "...",
-                                        success: "Tugatildi!",
+                                        success: "O'chirildi!",
                                         error: "Xatolik",
                                       },
                                     )
                                   }
                                   className="btn-secondary btn-sm text-xs flex-shrink-0"
                                 >
-                                  Tugatish
+                                  O'chirish
                                 </button>
                               )}
                             </div>
