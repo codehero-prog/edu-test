@@ -27,7 +27,8 @@ const uploadSubmission = async (req, res) => {
   if (semesterId) {
     semester = await prisma.semester.findUnique({ where: { id: semesterId } });
     if (!semester) throw new AppError("Semester topilmadi.", 404);
-    if (!semester.isActive) throw new AppError("Bu semester faol emas.", 403);
+    if (semester.status !== "ACTIVE")
+      throw new AppError("Bu semester faol emas.", 403);
     if (new Date() > new Date(semester.deadline))
       throw new AppError("Semester muddati tugagan.", 403);
 
