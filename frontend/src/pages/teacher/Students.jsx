@@ -702,8 +702,7 @@ export default function TeacherStudents() {
                             {sub.fileUrl && (
                               <a
                                 href={sub.fileUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                                download={sub.fileName || true}
                                 className="flex items-center gap-2 bg-white border border-indigo-200 rounded-lg px-3 py-2 hover:bg-indigo-50 transition-colors"
                               >
                                 <FileText
@@ -711,7 +710,7 @@ export default function TeacherStudents() {
                                   className="text-indigo-500 flex-shrink-0"
                                 />
                                 <span className="text-xs text-indigo-700 font-medium flex-1 truncate">
-                                  {sub.fileName || "Faylni ko'rish"}
+                                  {sub.fileName || "Faylni yuklab olish"}
                                 </span>
                                 <Download
                                   size={12}
