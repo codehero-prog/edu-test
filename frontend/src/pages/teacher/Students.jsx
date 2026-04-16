@@ -151,9 +151,18 @@ export default function TeacherStudents() {
     }
   };
 
-  const copyText = (t) => {
-    navigator.clipboard.writeText(t);
-    toast.success("Nusxalandi!");
+  const downloadFile = async (url, fileName) => {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = fileName || "file";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      toast.error("Yuklab olishda xatolik");
+    }
   };
 
   return (
@@ -700,23 +709,24 @@ export default function TeacherStudents() {
                           <div className="px-3 pb-3 pt-2 border-t border-slate-200 space-y-2">
                             {/* Fayl yuklab olish */}
                             {sub.fileUrl && (
-                              <a
-                                href={sub.fileUrl}
-                                download={sub.fileName || true}
-                                className="flex items-center gap-2 bg-white border border-indigo-200 rounded-lg px-3 py-2 hover:bg-indigo-50 transition-colors"
+                              <button
+                                onClick={() =>
+                                  downloadFile(sub.fileUrl, sub.fileName)
+                                }
+                                className="flex items-center gap-2 w-full bg-white border border-indigo-200 rounded-lg px-3 py-2 hover:bg-indigo-50 transition-colors"
                               >
                                 <FileText
                                   size={13}
                                   className="text-indigo-500 flex-shrink-0"
                                 />
-                                <span className="text-xs text-indigo-700 font-medium flex-1 truncate">
+                                <span className="text-xs text-indigo-700 font-medium flex-1 text-left truncate">
                                   {sub.fileName || "Faylni yuklab olish"}
                                 </span>
                                 <Download
                                   size={12}
                                   className="text-indigo-400 flex-shrink-0"
                                 />
-                              </a>
+                              </button>
                             )}
                             {/* Ball statistikasi */}
                             {gr && (
