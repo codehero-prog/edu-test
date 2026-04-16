@@ -27,8 +27,7 @@ const uploadSubmission = async (req, res) => {
   if (semesterId) {
     semester = await prisma.semester.findUnique({ where: { id: semesterId } });
     if (!semester) throw new AppError("Semester topilmadi.", 404);
-    if (!semester.isActive)
-      throw new AppError("Bu semester faol emas.", 403);
+    if (!semester.isActive) throw new AppError("Bu semester faol emas.", 403);
     if (new Date() > new Date(semester.deadline))
       throw new AppError("Semester muddati tugagan.", 403);
 
@@ -372,8 +371,8 @@ const getActiveSemesters = async (req, res) => {
 
   const semesters = await prisma.semester.findMany({
     where: {
-      group: student.group,
-      isActive: true,
+      groupName: student.group,
+      status: "ACTIVE",
       deadline: { gte: new Date() },
     },
     include: { teacher: { select: { name: true } } },
@@ -409,8 +408,8 @@ const getDashboardStats = async (req, res) => {
   const semester = student?.group
     ? await prisma.semester.findFirst({
         where: {
-          group: student.group,
-          isActive: true,
+          groupName: student.group,
+          status: "ACTIVE",
           deadline: { gte: new Date() },
         },
         orderBy: { createdAt: "desc" },
@@ -418,7 +417,9 @@ const getDashboardStats = async (req, res) => {
     : null;
 
   const semesterSubmissions = semester
-    ? await prisma.submission.count({ where: { studentId, semesterId: semester.id } })
+    ? await prisma.submission.count({
+        where: { studentId, semesterId: semester.id },
+      })
     : 0;
 
   const maxAttempts = semester?.maxUploads || 2;
