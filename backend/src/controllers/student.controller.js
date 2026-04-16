@@ -361,7 +361,24 @@ const getSubmissionResult = async (req, res) => {
   return successResponse(res, { submission }, "Natija yuklandi");
 };
 
-// ===== GET ACTIVE SEMESTERS =====
+// ===== DELETE SUBMISSION =====
+const deleteSubmission = async (req, res) => {
+  const { submissionId } = req.params;
+  const studentId = req.user.id;
+
+  const submission = await prisma.submission.findFirst({
+    where: { id: submissionId, studentId },
+  });
+  if (!submission) return errorResponse(res, "Topilmadi.", 404);
+
+  // Faqat test topshirilmagan bo'lsa o'chirish mumkin
+  if (submission.status === "GRADED")
+    return errorResponse(res, "Baholangan ishni o'chirib bo'lmaydi.", 403);
+
+  await prisma.submission.delete({ where: { id: submissionId } });
+  return successResponse(res, null, "Ish o'chirildi");
+};
+
 const getActiveSemesters = async (req, res) => {
   const student = await prisma.user.findUnique({
     where: { id: req.user.id },
@@ -476,4 +493,5 @@ module.exports = {
   getSubmissionResult,
   getDashboardStats,
   getActiveSemesters,
+  deleteSubmission,
 };
