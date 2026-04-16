@@ -1,67 +1,104 @@
 const bcrypt = require("bcryptjs");
-const { z }  = require("zod");
+const { z } = require("zod");
 const prisma = require("../config/prisma");
-const { successResponse, errorResponse, paginatedResponse } = require("../utils/response");
+const {
+  successResponse,
+  errorResponse,
+  paginatedResponse,
+} = require("../utils/response");
 
 // ===== CREATE STUDENT =====
 const createStudent = async (req, res) => {
-  const { name, email, password, group } = z.object({
-    name:     z.string().min(2),
-    email:    z.string().email(),
-    password: z.string().min(6),
-    group:    z.string().min(1, "Guruh kiritilishi shart"),
-  }).parse(req.body);
+  const { name, email, password, group } = z
+    .object({
+      name: z.string().min(2),
+      email: z.string().email(),
+      password: z.string().min(6),
+      group: z.string().min(1, "Guruh kiritilishi shart"),
+    })
+    .parse(req.body);
 
   const teacher = await prisma.user.findUnique({
-    where: { id: req.user.id }, select: { groups: true },
+    where: { id: req.user.id },
+    select: { groups: true },
   });
   if (teacher.groups.length > 0 && !teacher.groups.includes(group)) {
-    return errorResponse(res, `Siz faqat shu guruhlardan biriga talaba qo'sha olasiz: ${teacher.groups.join(", ")}`, 403);
+    return errorResponse(
+      res,
+      `Siz faqat shu guruhlardan biriga talaba qo'sha olasiz: ${teacher.groups.join(", ")}`,
+      403,
+    );
   }
-  const exists = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
-  if (exists) return errorResponse(res, "Bu email allaqachon ishlatilgan.", 409);
+  const exists = await prisma.user.findUnique({
+    where: { email: email.toLowerCase().trim() },
+  });
+  if (exists)
+    return errorResponse(res, "Bu email allaqachon ishlatilgan.", 409);
 
   const student = await prisma.user.create({
     data: {
-      name, email: email.toLowerCase().trim(),
+      name,
+      email: email.toLowerCase().trim(),
       password: await bcrypt.hash(password, 12),
-      role: "STUDENT", group, teacherId: req.user.id, createdById: req.user.id,
+      role: "STUDENT",
+      group,
+      teacherId: req.user.id,
+      createdById: req.user.id,
     },
-    select: { id: true, name: true, email: true, group: true, role: true, isActive: true, createdAt: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      group: true,
+      role: true,
+      isActive: true,
+      createdAt: true,
+    },
   });
   return successResponse(res, { student }, "Talaba yaratildi", 201);
 };
 
 // ===== GET MY STUDENTS =====
 const getMyStudents = async (req, res) => {
-  const page   = parseInt(req.query.page)  || 1;
-  const limit  = parseInt(req.query.limit) || 50;
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 50;
   const search = req.query.search || "";
-  const group  = req.query.group  || "";
-  const skip   = (page - 1) * limit;
+  const group = req.query.group || "";
+  const skip = (page - 1) * limit;
 
   const teacher = await prisma.user.findUnique({
-    where: { id: req.user.id }, select: { groups: true },
+    where: { id: req.user.id },
+    select: { groups: true },
   });
 
   const where = {
-    teacherId: req.user.id, role: "STUDENT",
-    ...(group  && { group }),
-    ...(search && { OR: [
-      { name:  { contains: search, mode: "insensitive" } },
-      { email: { contains: search, mode: "insensitive" } },
-    ]}),
+    teacherId: req.user.id,
+    role: "STUDENT",
+    ...(group && { group }),
+    ...(search && {
+      OR: [
+        { name: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+      ],
+    }),
   };
 
   const [students, total] = await Promise.all([
     prisma.user.findMany({
-      where, skip, take: limit,
+      where,
+      skip,
+      take: limit,
       select: {
-        id: true, name: true, email: true, group: true,
-        isActive: true, createdAt: true,
+        id: true,
+        name: true,
+        email: true,
+        group: true,
+        isActive: true,
+        createdAt: true,
         _count: { select: { submissions: true } },
         gradeReports: {
-          take: 1, orderBy: { createdAt: "desc" },
+          take: 1,
+          orderBy: { createdAt: "desc" },
           select: { gradeNumber: true, percentage: true },
         },
       },
@@ -70,8 +107,12 @@ const getMyStudents = async (req, res) => {
     prisma.user.count({ where }),
   ]);
 
-  return paginatedResponse(res, { students, teacherGroups: teacher.groups },
-    { total, page, limit, totalPages: Math.ceil(total / limit) }, "Talabalar");
+  return paginatedResponse(
+    res,
+    { students, teacherGroups: teacher.groups },
+    { total, page, limit, totalPages: Math.ceil(total / limit) },
+    "Talabalar",
+  );
 };
 
 // ===== GET STUDENT DETAIL =====
@@ -82,9 +123,35 @@ const getStudentDetail = async (req, res) => {
     include: {
       submissions: {
         orderBy: { createdAt: "desc" },
-        include: {
+        select: {
+          id: true,
+          title: true,
+          fileUrl: true,
+          fileName: true,
+          fileType: true,
+          status: true,
+          attemptNumber: true,
+          createdAt: true,
           gradeReport: true,
-          tests: { include: { results: { select: { score: true, percentage: true, gradeNumber: true, submittedAt: true } } } },
+          tests: {
+            include: {
+              results: {
+                select: {
+                  id: true,
+                  score: true,
+                  percentage: true,
+                  gradeNumber: true,
+                  grade: true,
+                  feedback: true,
+                  answers: true,
+                  extraAllowed: true,
+                  submittedAt: true,
+                },
+                orderBy: { submittedAt: "asc" },
+              },
+              // questions field JSON formatda test modelida
+            },
+          },
         },
       },
     },
@@ -96,16 +163,21 @@ const getStudentDetail = async (req, res) => {
 // ===== GET GROUPS WITH STATS =====
 const getGroupsWithStats = async (req, res) => {
   const teacher = await prisma.user.findUnique({
-    where: { id: req.user.id }, select: { groups: true, subject: true },
+    where: { id: req.user.id },
+    select: { groups: true, subject: true },
   });
 
   const groupStats = await Promise.all(
     teacher.groups.map(async (group) => {
       const [totalStudents, submittedStudents, semester] = await Promise.all([
-        prisma.user.count({ where: { teacherId: req.user.id, group, role: "STUDENT" } }),
+        prisma.user.count({
+          where: { teacherId: req.user.id, group, role: "STUDENT" },
+        }),
         prisma.user.count({
           where: {
-            teacherId: req.user.id, group, role: "STUDENT",
+            teacherId: req.user.id,
+            group,
+            role: "STUDENT",
             submissions: { some: { status: "GRADED" } },
           },
         }),
@@ -115,15 +187,20 @@ const getGroupsWithStats = async (req, res) => {
         }),
       ]);
       return {
-        group, totalStudents,
+        group,
+        totalStudents,
         submittedStudents,
         notSubmittedStudents: totalStudents - submittedStudents,
         semester,
       };
-    })
+    }),
   );
 
-  return successResponse(res, { groups: groupStats, subject: teacher.subject }, "Guruhlar");
+  return successResponse(
+    res,
+    { groups: groupStats, subject: teacher.subject },
+    "Guruhlar",
+  );
 };
 
 // ===== GET SEMESTER STUDENTS (group detail) =====
@@ -138,10 +215,19 @@ const getSemesterStudents = async (req, res) => {
           orderBy: { createdAt: "desc" },
           include: {
             gradeReport: {
-              select: { id: true, grade: true, gradeNumber: true, percentage: true, extraChance: true },
+              select: {
+                id: true,
+                grade: true,
+                gradeNumber: true,
+                percentage: true,
+                extraChance: true,
+              },
             },
             tests: {
-              select: { id: true, results: { select: { score: true, percentage: true } } },
+              select: {
+                id: true,
+                results: { select: { score: true, percentage: true } },
+              },
             },
           },
         },
@@ -154,30 +240,46 @@ const getSemesterStudents = async (req, res) => {
     }),
   ]);
 
-  return successResponse(res, { students, semester, group }, "Guruh talabalari");
+  return successResponse(
+    res,
+    { students, semester, group },
+    "Guruh talabalari",
+  );
 };
 
 // ===== DASHBOARD STATS =====
 const getDashboardStats = async (req, res) => {
   const teacher = await prisma.user.findUnique({
-    where: { id: req.user.id }, select: { subject: true, groups: true },
+    where: { id: req.user.id },
+    select: { subject: true, groups: true },
   });
 
-  const [totalStudents, totalSubmissions, gradedSubmissions] = await Promise.all([
-    prisma.user.count({ where: { teacherId: req.user.id, role: "STUDENT" } }),
-    prisma.submission.count({ where: { student: { teacherId: req.user.id } } }),
-    prisma.submission.count({ where: { status: "GRADED", student: { teacherId: req.user.id } } }),
-  ]);
+  const [totalStudents, totalSubmissions, gradedSubmissions] =
+    await Promise.all([
+      prisma.user.count({ where: { teacherId: req.user.id, role: "STUDENT" } }),
+      prisma.submission.count({
+        where: { student: { teacherId: req.user.id } },
+      }),
+      prisma.submission.count({
+        where: { status: "GRADED", student: { teacherId: req.user.id } },
+      }),
+    ]);
 
-  return successResponse(res, {
-    stats: {
-      subject: teacher.subject, groups: teacher.groups,
-      totalGroups: teacher.groups.length,
-      totalStudents, totalSubmissions,
-      gradedSubmissions,
-      pendingSubmissions: totalSubmissions - gradedSubmissions,
+  return successResponse(
+    res,
+    {
+      stats: {
+        subject: teacher.subject,
+        groups: teacher.groups,
+        totalGroups: teacher.groups.length,
+        totalStudents,
+        totalSubmissions,
+        gradedSubmissions,
+        pendingSubmissions: totalSubmissions - gradedSubmissions,
+      },
     },
-  }, "Dashboard");
+    "Dashboard",
+  );
 };
 
 // ===== TOGGLE STUDENT =====
@@ -188,11 +290,15 @@ const toggleStudentStatus = async (req, res) => {
   });
   if (!student) return errorResponse(res, "Talaba topilmadi.", 404);
   const updated = await prisma.user.update({
-    where: { id: studentId }, data: { isActive: !student.isActive },
+    where: { id: studentId },
+    data: { isActive: !student.isActive },
     select: { id: true, name: true, isActive: true },
   });
-  return successResponse(res, { student: updated },
-    `Talaba ${updated.isActive ? "faollashtirildi" : "bloklandi"}`);
+  return successResponse(
+    res,
+    { student: updated },
+    `Talaba ${updated.isActive ? "faollashtirildi" : "bloklandi"}`,
+  );
 };
 
 // ===== DELETE STUDENT =====
@@ -208,15 +314,18 @@ const deleteStudent = async (req, res) => {
 
 // ===== CREATE SEMESTER =====
 const createSemester = async (req, res) => {
-  const { name, group, startDate, deadline } = z.object({
-    name:      z.string().min(2),
-    group:     z.string().min(1),
-    startDate: z.string(),
-    deadline:  z.string(),
-  }).parse(req.body);
+  const { name, group, startDate, deadline } = z
+    .object({
+      name: z.string().min(2),
+      group: z.string().min(1),
+      startDate: z.string(),
+      deadline: z.string(),
+    })
+    .parse(req.body);
 
   const teacher = await prisma.user.findUnique({
-    where: { id: req.user.id }, select: { groups: true },
+    where: { id: req.user.id },
+    select: { groups: true },
   });
   if (!teacher.groups.includes(group)) {
     return errorResponse(res, "Bu guruh sizga tegishli emas.", 403);
@@ -230,9 +339,11 @@ const createSemester = async (req, res) => {
 
   const semester = await prisma.semester.create({
     data: {
-      name, group, teacherId: req.user.id,
+      name,
+      group,
+      teacherId: req.user.id,
       startDate: new Date(startDate),
-      deadline:  new Date(deadline),
+      deadline: new Date(deadline),
       isActive: true,
     },
   });
@@ -281,10 +392,15 @@ const downloadSubmissionFile = async (req, res) => {
 
   const submission = await prisma.submission.findFirst({
     where: { id: req.params.submissionId },
-    select: { fileUrl: true, fileName: true, student: { select: { teacherId: true } } },
+    select: {
+      fileUrl: true,
+      fileName: true,
+      student: { select: { teacherId: true } },
+    },
   });
   if (!submission) throw new AppError("Fayl topilmadi.", 404);
-  if (submission.student.teacherId !== req.user.id) throw new AppError("Ruxsat yo'q.", 403);
+  if (submission.student.teacherId !== req.user.id)
+    throw new AppError("Ruxsat yo'q.", 403);
 
   const response = await fetch(submission.fileUrl);
   if (!response.ok) throw new AppError("Fayl yuklab bo'lmadi.", 500);
@@ -292,15 +408,26 @@ const downloadSubmissionFile = async (req, res) => {
   const buffer = await response.arrayBuffer();
   const safeName = encodeURIComponent(submission.fileName);
 
-  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${safeName}`);
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename*=UTF-8''${safeName}`,
+  );
   res.setHeader("Content-Type", "application/octet-stream");
   res.send(Buffer.from(buffer));
 };
 
 module.exports = {
-  createStudent, getMyStudents, getStudentDetail,
-  getGroupsWithStats, getSemesterStudents,
-  getDashboardStats, toggleStudentStatus, deleteStudent,
-  createSemester, getSemesters, deleteSemester,
-  grantExtraChance, downloadSubmissionFile,
+  createStudent,
+  getMyStudents,
+  getStudentDetail,
+  getGroupsWithStats,
+  getSemesterStudents,
+  getDashboardStats,
+  toggleStudentStatus,
+  deleteStudent,
+  createSemester,
+  getSemesters,
+  deleteSemester,
+  grantExtraChance,
+  downloadSubmissionFile,
 };
