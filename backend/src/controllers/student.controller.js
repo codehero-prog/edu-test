@@ -371,10 +371,6 @@ const deleteSubmission = async (req, res) => {
   });
   if (!submission) return errorResponse(res, "Topilmadi.", 404);
 
-  // Faqat test topshirilmagan bo'lsa o'chirish mumkin
-  if (submission.status === "GRADED")
-    return errorResponse(res, "Baholangan ishni o'chirib bo'lmaydi.", 403);
-
   await prisma.submission.delete({ where: { id: submissionId } });
   return successResponse(res, null, "Ish o'chirildi");
 };

@@ -322,16 +322,14 @@ export default function StudentDashboard() {
                       {statusLabels[s.status]}
                     </span>
                   )}
-                  {s.status !== "GRADED" && (
-                    <button
-                      onClick={() =>
-                        setDeleteConfirm({ id: s.id, title: s.title })
-                      }
-                      className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  )}
+                  <button
+                    onClick={() =>
+                      setDeleteConfirm({ id: s.id, title: s.title })
+                    }
+                    className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </div>
               </div>
             ))
