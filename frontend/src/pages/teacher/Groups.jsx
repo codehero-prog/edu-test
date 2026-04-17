@@ -27,6 +27,8 @@ import {
   AlertCircle,
   ToggleLeft,
   ToggleRight,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 
 export default function TeacherGroups() {
@@ -41,6 +43,8 @@ export default function TeacherGroups() {
 
   // Semester modal
   const [semModal, setSemModal] = useState(false);
+  const [editSem, setEditSem] = useState(null); // tahrirlash uchun
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [semForm, setSemForm] = useState({
     name: "",
     groupName: "",
@@ -124,6 +128,65 @@ export default function TeacherGroups() {
       toast.error(err?.response?.data?.message || "Xatolik");
     } finally {
       setSemSubmitting(false);
+    }
+  };
+
+  const openEdit = (sem) => {
+    setEditSem(sem);
+    setSemForm({
+      name: sem.name,
+      groupName: sem.groupName,
+      subject: sem.subject || "",
+      deadline: sem.deadline
+        ? new Date(sem.deadline).toISOString().slice(0, 16)
+        : "",
+      maxUploads: sem.maxUploads || 2,
+      questionCount: sem.questionCount || 5,
+      customPrompt: sem.customPrompt || "",
+    });
+    setSemModal(true);
+  };
+
+  const handleEditSemester = async (e) => {
+    e.preventDefault();
+    setSemSubmitting(true);
+    try {
+      await api.patch(`/teacher/semesters/${editSem.id}`, {
+        name: semForm.name,
+        subject: semForm.subject,
+        deadline: new Date(semForm.deadline).toISOString(),
+        maxUploads: parseInt(semForm.maxUploads),
+        questionCount: parseInt(semForm.questionCount),
+        customPrompt: semForm.customPrompt || null,
+      });
+      toast.success("Semester yangilandi!");
+      setSemModal(false);
+      setEditSem(null);
+      setSemForm({
+        name: "",
+        groupName: "",
+        subject: "",
+        deadline: "",
+        maxUploads: 2,
+        questionCount: 5,
+        customPrompt: "",
+      });
+      fetchSemesters();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Xatolik");
+    } finally {
+      setSemSubmitting(false);
+    }
+  };
+
+  const handleDeleteSemester = async () => {
+    try {
+      await api.delete(`/teacher/semesters/${deleteConfirm.id}`);
+      toast.success("Semester o'chirildi");
+      setDeleteConfirm(null);
+      fetchSemesters();
+    } catch {
+      toast.error("Xatolik");
     }
   };
 
@@ -267,27 +330,47 @@ export default function TeacherGroups() {
                                   </span>
                                 </div>
                               </div>
-                              {sem.status === "ACTIVE" && (
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                {sem.status === "ACTIVE" && (
+                                  <button
+                                    onClick={() =>
+                                      toast.promise(
+                                        api
+                                          .patch(
+                                            `/teacher/semesters/${sem.id}`,
+                                            { status: "FINISHED" },
+                                          )
+                                          .then(() => fetchSemesters()),
+                                        {
+                                          loading: "...",
+                                          success: "Tugatildi!",
+                                          error: "Xatolik",
+                                        },
+                                      )
+                                    }
+                                    className="btn-secondary btn-sm text-xs"
+                                  >
+                                    Tugatish
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => openEdit(sem)}
+                                  className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors"
+                                >
+                                  <Pencil size={13} />
+                                </button>
                                 <button
                                   onClick={() =>
-                                    toast.promise(
-                                      api
-                                        .patch(`/teacher/semesters/${sem.id}`, {
-                                          status: "FINISHED",
-                                        })
-                                        .then(() => fetchSemesters()),
-                                      {
-                                        loading: "...",
-                                        success: "Tugatildi!",
-                                        error: "Xatolik",
-                                      },
-                                    )
+                                    setDeleteConfirm({
+                                      id: sem.id,
+                                      name: sem.name,
+                                    })
                                   }
-                                  className="btn-secondary btn-sm text-xs flex-shrink-0"
+                                  className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
                                 >
-                                  Tugatish
+                                  <Trash2 size={13} />
                                 </button>
-                              )}
+                              </div>
                             </div>
                           </div>
                         );
@@ -301,13 +384,28 @@ export default function TeacherGroups() {
         )}
       </div>
 
-      {/* Create Semester Modal */}
+      {/* Create / Edit Semester Modal */}
       <Modal
         isOpen={semModal}
-        onClose={() => setSemModal(false)}
-        title="Yangi Semester Yaratish"
+        onClose={() => {
+          setSemModal(false);
+          setEditSem(null);
+          setSemForm({
+            name: "",
+            groupName: "",
+            subject: "",
+            deadline: "",
+            maxUploads: 2,
+            questionCount: 5,
+            customPrompt: "",
+          });
+        }}
+        title={editSem ? "Semesterni Tahrirlash" : "Yangi Semester Yaratish"}
       >
-        <form onSubmit={handleCreateSemester} className="space-y-3">
+        <form
+          onSubmit={editSem ? handleEditSemester : handleCreateSemester}
+          className="space-y-3"
+        >
           <div>
             <label className="label">
               Semester nomi <span className="text-red-400">*</span>
@@ -327,7 +425,8 @@ export default function TeacherGroups() {
             </label>
             <select
               required
-              className="input"
+              disabled={!!editSem}
+              className="input disabled:opacity-50 disabled:cursor-not-allowed"
               value={semForm.groupName}
               onChange={(e) =>
                 setSemForm({ ...semForm, groupName: e.target.value })
@@ -425,7 +524,10 @@ export default function TeacherGroups() {
           <div className="flex gap-2.5 pt-1">
             <button
               type="button"
-              onClick={() => setSemModal(false)}
+              onClick={() => {
+                setSemModal(false);
+                setEditSem(null);
+              }}
               className="btn-secondary flex-1"
             >
               Bekor
@@ -436,7 +538,7 @@ export default function TeacherGroups() {
               className="btn-primary flex-1"
             >
               {semSubmitting && <Loader2 size={14} className="animate-spin" />}{" "}
-              Yaratish
+              {editSem ? "Saqlash" : "Yaratish"}
             </button>
           </div>
         </form>
@@ -650,6 +752,16 @@ export default function TeacherGroups() {
         onConfirm={() => handleExtraAttempt(extraConfirm)}
         title="3-urinishga ruxsat berish"
         message="Bu talabaga qo'shimcha urinish berasizmi?"
+      />
+
+      {/* Delete semester confirm */}
+      <ConfirmDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleDeleteSemester}
+        title={`"${deleteConfirm?.name}" ni o'chirish`}
+        message="Bu semesterni o'chirsangiz, unga bog'liq barcha ma'lumotlar saqlanib qoladi. Davom etasizmi?"
+        danger
       />
     </DashboardLayout>
   );
