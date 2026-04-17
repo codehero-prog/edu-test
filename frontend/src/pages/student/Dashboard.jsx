@@ -216,6 +216,11 @@ export default function StudentDashboard() {
                 <p className="font-semibold text-slate-900 text-sm">
                   {stats.semester.name}
                 </p>
+                {stats.semester.subject && (
+                  <p className="text-xs font-medium text-indigo-600 mt-0.5">
+                    📚 {stats.semester.subject}
+                  </p>
+                )}
                 <p className="text-xs text-slate-500 mt-0.5">
                   {formatDate(stats.semester.startDate)} —{" "}
                   {formatDate(stats.semester.deadline)}
