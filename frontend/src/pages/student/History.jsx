@@ -186,7 +186,9 @@ export default function StudentHistory() {
                         <p className="text-4xl font-black text-slate-900">
                           {result?.score ?? 0}
                         </p>
-                        <p className="text-xs text-slate-500">/ 5 ball</p>
+                        <p className="text-xs text-slate-500">
+                          / {questions.length || 5} ball
+                        </p>
                       </div>
                       <div className="w-px h-12 bg-slate-200" />
                       <div>
@@ -319,7 +321,9 @@ export default function StudentHistory() {
                 </button>
                 {selected.fileUrl && (
                   <button
-                    onClick={() => downloadSubmission(selected.id, selected.fileName)}
+                    onClick={() =>
+                      downloadSubmission(selected.id, selected.fileName)
+                    }
                     className="btn-secondary px-4 py-2.5"
                   >
                     <Download size={16} />

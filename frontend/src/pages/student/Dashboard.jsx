@@ -495,7 +495,9 @@ export default function StudentDashboard() {
                         <p className="text-4xl font-black text-slate-900">
                           {detailResult?.score ?? 0}
                         </p>
-                        <p className="text-xs text-slate-500">/ 5 ball</p>
+                        <p className="text-xs text-slate-500">
+                          / {detailQuestions.length || 5} ball
+                        </p>
                       </div>
                       <div className="w-px h-12 bg-slate-200" />
                       <div>

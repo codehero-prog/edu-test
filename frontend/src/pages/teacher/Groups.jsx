@@ -560,6 +560,8 @@ export default function TeacherGroups() {
                       const gr = sub.gradeReport;
                       const results = sub.tests?.[0]?.results || [];
                       const lastResult = results[results.length - 1];
+                      const questions = sub.tests?.[0]?.questions || [];
+                      const totalQ = questions.length || lastResult?.score || 5;
                       const hasExtraAllowed = results.some(
                         (r) => r.extraAllowed,
                       );
@@ -603,7 +605,10 @@ export default function TeacherGroups() {
                           {gr && (
                             <div className="flex items-center gap-2 mt-2">
                               <span className="text-xs text-slate-500">
-                                Ball: <strong>{lastResult?.score}/5</strong>
+                                Ball:{" "}
+                                <strong>
+                                  {lastResult?.score}/{totalQ}
+                                </strong>
                               </span>
                               <span className="text-xs text-slate-500">
                                 Foiz:{" "}
