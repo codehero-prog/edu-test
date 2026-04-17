@@ -98,9 +98,7 @@ export default function StudentDashboard() {
 
   const now = new Date();
   const semesterActive =
-    stats?.semester &&
-    now >= new Date(stats.semester.startDate) &&
-    now <= new Date(stats.semester.deadline);
+    stats?.semester && now <= new Date(stats.semester.deadline);
 
   const cards = [
     {
@@ -222,8 +220,7 @@ export default function StudentDashboard() {
                   </p>
                 )}
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {formatDate(stats.semester.startDate)} —{" "}
-                  {formatDate(stats.semester.deadline)}
+                  Deadline: {formatDate(stats.semester.deadline)}
                 </p>
               </div>
               {semesterActive ? (
