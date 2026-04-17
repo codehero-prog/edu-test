@@ -35,9 +35,10 @@ export default function StudentUpload() {
 
   useEffect(() => {
     if (semesterIdParam) {
-      api.get("/student/semester").then(({ data }) => {
-        const sem = data.data.semester;
-        if (sem && sem.id === semesterIdParam) setSemester(sem);
+      api.get("/student/semesters").then(({ data }) => {
+        const sems = data.data.semesters || [];
+        const sem = sems.find((s) => s.id === semesterIdParam) || sems[0];
+        if (sem) setSemester(sem);
       });
     }
   }, [semesterIdParam]);
