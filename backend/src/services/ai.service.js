@@ -25,6 +25,53 @@ const groqRequest = async (params, retries = 3) => {
   }
 };
 
+// ===== TIL ANIQLASH =====
+const detectLanguage = (text) => {
+  const sample = text.substring(0, 1000).toLowerCase();
+  // Rus alifbosi
+  const cyrillicRu = (sample.match(/[а-яёА-ЯЁ]/g) || []).length;
+  // O'zbek kiril harflari (ғ, қ, ҳ, ў, ъ)
+  const uzbekSpecial = (sample.match(/[ғқҳўъ]/g) || []).length;
+  // Lotin (ingliz yoki o'zbek lotin)
+  const latin = (sample.match(/[a-zA-Z]/g) || []).length;
+  // O'zbek lotin so'zlar
+  const uzbekLatin = (
+    sample.match(
+      /\b(va|bu|bilan|uchun|ham|lekin|chunki|deb|edi|bo'ldi|qildi)\b/gi,
+    ) || []
+  ).length;
+  // Ingliz so'zlar
+  const englishWords = (
+    sample.match(
+      /\b(the|and|or|is|are|was|were|of|in|to|for|with|this|that|have|has)\b/gi,
+    ) || []
+  ).length;
+
+  if (uzbekSpecial > 2 || uzbekLatin > 2)
+    return {
+      code: "uz",
+      name: "O'zbek",
+      instruction: "Barcha savollar va variantlarni O'ZBEK tilida yoz.",
+    };
+  if (cyrillicRu > latin)
+    return {
+      code: "ru",
+      name: "Rus",
+      instruction: "Все вопросы и варианты ответов пиши на РУССКОМ языке.",
+    };
+  if (englishWords > 5)
+    return {
+      code: "en",
+      name: "English",
+      instruction: "Write ALL questions and answer options in ENGLISH.",
+    };
+  return {
+    code: "uz",
+    name: "O'zbek",
+    instruction: "Barcha savollar va variantlarni O'ZBEK tilida yoz.",
+  };
+};
+
 // JSON example generator — istalgan sonli savollar uchun
 const buildJsonExample = (count) => {
   const items = Array.from({ length: count }, (_, i) => ({
@@ -46,9 +93,12 @@ const generateTests = async (
   const questionCount = options.questionCount || 5;
   const customPrompt = options.customPrompt || null;
 
-  // Agar custom prompt bo'lsa — uni to'g'ridan ishlatamiz
-  // Agar yo'q bo'lsa — matematik/nazariy aniqlash
+  // Til aniqlash
+  const lang = detectLanguage(extractedText);
+
   let taskInstruction;
+  let resolvedCount = questionCount;
+
   if (customPrompt) {
     // O'qituvchi promptidan nechta savol so'ralganini aniqlash
     const countMatch = customPrompt.match(
@@ -57,14 +107,12 @@ const generateTests = async (
     const promptCount = countMatch
       ? parseInt(countMatch[1] || countMatch[2] || countMatch[3])
       : null;
-    const finalCount = promptCount || questionCount;
+    resolvedCount = promptCount || questionCount;
 
     taskInstruction = `O'qituvchi ko'rsatmasi: ${customPrompt}
 
-Jami ${finalCount} ta test savoli tuz. Ko'rsatmaga qat'iy amal qil.`;
-
-    // finalCount ni qayta set qilamiz
-    options._resolvedCount = finalCount;
+Jami ${resolvedCount} ta test savoli tuz. Ko'rsatmaga qat'iy amal qil.
+MUHIM: ${lang.instruction}`;
   } else {
     const isMath =
       /matematik|algebra|geometr|integral|differensial|tengla|formula|hisob|son|to'plam|funksiya|limit/i.test(
@@ -72,13 +120,11 @@ Jami ${finalCount} ta test savoli tuz. Ko'rsatmaga qat'iy amal qil.`;
       );
     const latexHint = isMath
       ? `Matematik formulalar LaTeX formatida yoz: inline $formula$, blok $$formula$$.`
-      : `Savollarni O'zbek tilida yoz.`;
+      : ``;
 
-    taskInstruction = `${questionCount} ta test savoli tuz. ${latexHint}`;
-    options._resolvedCount = questionCount;
+    taskInstruction = `${resolvedCount} ta test savoli tuz.
+MUHIM: ${lang.instruction} ${latexHint}`;
   }
-
-  const resolvedCount = options._resolvedCount || questionCount;
 
   const prompt = `Sen talabalar mustaqil ishini tekshiruvchi AI yordamchisan.
 
@@ -161,17 +207,25 @@ const generateFeedback = async (
 ) => {
   try {
     const total = results.length;
+    const lang = detectLanguage(extractedText);
     const wrong = results
       .filter((r) => !r.isCorrect)
       .map((r) => `- ${r.question}`)
       .join("\n");
+
+    const langInstruction =
+      {
+        uz: `O'zbek tilida 2-3 gaplik rag'batlantiruvchi fikr yoz.`,
+        ru: `Напиши 2-3 предложения на русском языке с похвалой и советом.`,
+        en: `Write 2-3 sentences of encouraging feedback in English.`,
+      }[lang.code] || `O'zbek tilida 2-3 gaplik fikr yoz.`;
 
     const completion = await groqRequest({
       model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "user",
-          content: `Talaba ${correctCount}/${total} to'g'ri javob berdi (${percentage.toFixed(0)}%). ${wrong ? "Xato savollar:\n" + wrong : "Barchasi to'g'ri!"} O'zbek tilida 2-3 gaplik rag'batlantiruvchi fikr yoz.`,
+          content: `Talaba ${correctCount}/${total} to'g'ri javob berdi (${percentage.toFixed(0)}%). ${wrong ? "Xato savollar:\n" + wrong : "Barchasi to'g'ri!"} ${langInstruction}`,
         },
       ],
       max_tokens: 200,
