@@ -10,6 +10,7 @@ import {
   fileTypeIcons,
 } from "../../lib/utils";
 import api from "../../lib/api";
+import toast from "react-hot-toast";
 import { downloadSubmission } from "../../lib/download";
 import {
   FileText,
@@ -20,8 +21,10 @@ import {
   MessageSquare,
   Download,
   Link as LinkIcon,
+  Trash2,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import ConfirmDialog from "../../components/ConfirmDialog";
 
 export default function StudentHistory() {
   const navigate = useNavigate();
@@ -31,8 +34,10 @@ export default function StudentHistory() {
   const [totalPages, setTotalPages] = useState(1);
   const [selected, setSelected] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
+  const fetchSubs = () => {
     setLoading(true);
     api
       .get(`/student/submissions?page=${page}&limit=15`)
@@ -41,7 +46,27 @@ export default function StudentHistory() {
         setTotalPages(data.pagination.totalPages);
       })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchSubs();
   }, [page]);
+
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/student/submissions/${deleteConfirm.id}`);
+      toast.success("Ish o'chirildi");
+      setDeleteConfirm(null);
+      if (selected?.id === deleteConfirm.id) setSelected(null);
+      fetchSubs();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Xatolik");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const openDetail = async (sub) => {
     if (sub.status === "GRADED") {
@@ -88,14 +113,19 @@ export default function StudentHistory() {
             {subs.map((s) => (
               <div
                 key={s.id}
-                onClick={() => openDetail(s)}
-                className="card p-4 cursor-pointer hover:shadow-md hover:border-primary-200 active:scale-[0.99] transition-all"
+                className="card p-4 hover:shadow-md hover:border-primary-200 transition-all"
               >
                 <div className="flex items-start gap-3">
-                  <span className="text-2xl flex-shrink-0">
+                  <span
+                    onClick={() => openDetail(s)}
+                    className="text-2xl flex-shrink-0 cursor-pointer"
+                  >
                     {fileTypeIcons[s.fileType] || "📄"}
                   </span>
-                  <div className="flex-1 min-w-0">
+                  <div
+                    onClick={() => openDetail(s)}
+                    className="flex-1 min-w-0 cursor-pointer"
+                  >
                     <p className="font-semibold text-slate-900 text-sm truncate">
                       {s.title}
                     </p>
@@ -127,6 +157,17 @@ export default function StudentHistory() {
                       )}
                     </div>
                   </div>
+                  {s.status !== "GRADED" && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteConfirm({ id: s.id, title: s.title });
+                      }}
+                      className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors flex-shrink-0"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -334,6 +375,15 @@ export default function StudentHistory() {
           )
         )}
       </Modal>
+
+      <ConfirmDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleDelete}
+        title="Ishni o'chirish"
+        message={`"${deleteConfirm?.title}" ni o'chirmoqchimisiz?`}
+        danger
+      />
     </DashboardLayout>
   );
 }
