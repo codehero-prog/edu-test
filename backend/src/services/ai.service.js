@@ -25,54 +25,6 @@ const groqRequest = async (params, retries = 3) => {
   }
 };
 
-// ===== TIL ANIQLASH =====
-const detectLanguage = (text) => {
-  const sample = text.substring(0, 1000).toLowerCase();
-  // Rus alifbosi
-  const cyrillicRu = (sample.match(/[а-яёА-ЯЁ]/g) || []).length;
-  // O'zbek kiril harflari (ғ, қ, ҳ, ў, ъ)
-  const uzbekSpecial = (sample.match(/[ғқҳўъ]/g) || []).length;
-  // Lotin (ingliz yoki o'zbek lotin)
-  const latin = (sample.match(/[a-zA-Z]/g) || []).length;
-  // O'zbek lotin so'zlar
-  const uzbekLatin = (
-    sample.match(
-      /\b(va|bu|bilan|uchun|ham|lekin|chunki|deb|edi|bo'ldi|qildi)\b/gi,
-    ) || []
-  ).length;
-  // Ingliz so'zlar
-  const englishWords = (
-    sample.match(
-      /\b(the|and|or|is|are|was|were|of|in|to|for|with|this|that|have|has)\b/gi,
-    ) || []
-  ).length;
-
-  if (uzbekSpecial > 2 || uzbekLatin > 2)
-    return {
-      code: "uz",
-      name: "O'zbek",
-      instruction: "Barcha savollar va variantlarni O'ZBEK tilida yoz.",
-    };
-  if (cyrillicRu > latin)
-    return {
-      code: "ru",
-      name: "Rus",
-      instruction: "Все вопросы и варианты ответов пиши на РУССКОМ языке.",
-    };
-  if (englishWords > 5)
-    return {
-      code: "en",
-      name: "English",
-      instruction: "Write ALL questions and answer options in ENGLISH.",
-    };
-  return {
-    code: "uz",
-    name: "O'zbek",
-    instruction: "Barcha savollar va variantlarni O'ZBEK tilida yoz.",
-  };
-};
-
-// JSON example generator — istalgan sonli savollar uchun
 const buildJsonExample = (count) => {
   const items = Array.from({ length: count }, (_, i) => ({
     id: i + 1,
@@ -84,6 +36,16 @@ const buildJsonExample = (count) => {
   return JSON.stringify({ questions: items });
 };
 
+// Matematik mavzu aniqlash — o'zbek, rus, ingliz tillari
+const isMathContent = (text) => {
+  const mathKeywords =
+    /математик|алгебр|геометр|интеграл|дифференциал|уравнени|формул|вычислени|теорем|функци|предел|вероятност|статистик|matematik|algebra|geometr|integral|differensial|tengla|formula|hisob|funksiya|limit|calculus|equation|theorem|derivative|matrix|vector|trigon/i;
+  // Matematik belgilar ham tekshiramiz
+  const mathSymbols =
+    /[=+\-×÷√∑∏∫∂²³]|(\d+[\+\-\*\/]\d+)|(x\^?\d)|(sin|cos|tan|log|ln)\s*\(/i;
+  return mathKeywords.test(text) || mathSymbols.test(text);
+};
+
 // ===== TEST SAVOLLAR YARATISH =====
 const generateTests = async (
   extractedText,
@@ -93,37 +55,39 @@ const generateTests = async (
   const questionCount = options.questionCount || 5;
   const customPrompt = options.customPrompt || null;
 
-  // Til aniqlash
-  const lang = detectLanguage(extractedText);
+  const isMath = isMathContent(extractedText + " " + title);
+
+  const latexRule = isMath
+    ? `
+LATEX QOIDASI (MAJBURIY):
+- Barcha matematik formulalar, tenglamalar, sonlar LaTeX formatida yozilishi SHART.
+- Inline formula: $formula$ (masalan: $x^2 + 2x - 3 = 0$, $\\frac{a}{b}$, $\\sqrt{x}$)
+- Blok formula: $$formula$$ (masalan: $$\\int_0^1 x^2 dx = \\frac{1}{3}$$)
+- Savol matni ichida ham, variantlarda ham LaTeX ishlat.
+- Misol savol: "Quyidagi tenglamaning ildizini toping: $x^2 - 5x + 6 = 0$"
+- Misol variant: "A: $x = 2, x = 3$"
+- LATEX ISHLATMASANG NOTO'G'RI HISOBLANADI.`
+    : "";
 
   let taskInstruction;
   let resolvedCount = questionCount;
 
   if (customPrompt) {
-    // O'qituvchi promptidan nechta savol so'ralganini aniqlash
     const countMatch = customPrompt.match(
-      /(\d+)\s*ta\s*test|(\d+)\s*ta\s*savol|(\d+)\s*test/i,
+      /(\d+)\s*ta\s*(test|savol)|(\d+)\s*вопрос/i,
     );
     const promptCount = countMatch
-      ? parseInt(countMatch[1] || countMatch[2] || countMatch[3])
+      ? parseInt(countMatch[1] || countMatch[3])
       : null;
     resolvedCount = promptCount || questionCount;
 
     taskInstruction = `O'qituvchi ko'rsatmasi: ${customPrompt}
 
 Jami ${resolvedCount} ta test savoli tuz. Ko'rsatmaga qat'iy amal qil.
-MUHIM: ${lang.instruction}`;
+${latexRule}`;
   } else {
-    const isMath =
-      /matematik|algebra|geometr|integral|differensial|tengla|formula|hisob|son|to'plam|funksiya|limit/i.test(
-        extractedText + title,
-      );
-    const latexHint = isMath
-      ? `Matematik formulalar LaTeX formatida yoz: inline $formula$, blok $$formula$$.`
-      : ``;
-
     taskInstruction = `${resolvedCount} ta test savoli tuz.
-MUHIM: ${lang.instruction} ${latexHint}`;
+${latexRule}`;
   }
 
   const prompt = `Sen talabalar mustaqil ishini tekshiruvchi AI yordamchisan.
@@ -141,8 +105,8 @@ ${buildJsonExample(resolvedCount)}`;
   const completion = await groqRequest({
     model: "llama-3.3-70b-versatile",
     messages: [{ role: "user", content: prompt }],
-    max_tokens: Math.max(2000, resolvedCount * 300),
-    temperature: 0.3,
+    max_tokens: Math.max(2000, resolvedCount * 400),
+    temperature: 0.2,
   });
 
   const text = completion.choices[0]?.message?.content || "";
@@ -207,25 +171,17 @@ const generateFeedback = async (
 ) => {
   try {
     const total = results.length;
-    const lang = detectLanguage(extractedText);
     const wrong = results
       .filter((r) => !r.isCorrect)
       .map((r) => `- ${r.question}`)
       .join("\n");
-
-    const langInstruction =
-      {
-        uz: `O'zbek tilida 2-3 gaplik rag'batlantiruvchi fikr yoz.`,
-        ru: `Напиши 2-3 предложения на русском языке с похвалой и советом.`,
-        en: `Write 2-3 sentences of encouraging feedback in English.`,
-      }[lang.code] || `O'zbek tilida 2-3 gaplik fikr yoz.`;
 
     const completion = await groqRequest({
       model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "user",
-          content: `Talaba ${correctCount}/${total} to'g'ri javob berdi (${percentage.toFixed(0)}%). ${wrong ? "Xato savollar:\n" + wrong : "Barchasi to'g'ri!"} ${langInstruction}`,
+          content: `Talaba ${correctCount}/${total} to'g'ri javob berdi (${percentage.toFixed(0)}%). ${wrong ? "Xato savollar:\n" + wrong : "Barchasi to'g'ri!"} O'zbek tilida 2-3 gaplik rag'batlantiruvchi fikr yoz.`,
         },
       ],
       max_tokens: 200,
@@ -237,7 +193,7 @@ const generateFeedback = async (
   }
 };
 
-// ===== BAHO (foizga qarab) =====
+// ===== BAHO =====
 const calculateGrade = (correctCount, total = 5) => {
   const pct = (correctCount / total) * 100;
   if (pct >= 90) return { grade: "EXCELLENT", gradeNumber: 5 };
