@@ -25,22 +25,17 @@ const groqRequest = async (params, retries = 3) => {
   }
 };
 
-// JSON ni xavfsiz parse qilish — LaTeX \\ belgilarini to'g'irlaydi
+// JSON ni xavfsiz parse qilish
 const safeJsonParse = (text) => {
-  // 1. To'g'ridan parse qilishga harakat
   try {
     return JSON.parse(text);
   } catch {}
-
-  // 2. LaTeX \\ ni vaqtincha almashtirish
   try {
     const fixed = text
-      .replace(/\\(?!["\\/bfnrtu])/g, "\\\\") // yakka \ ni \\ ga
-      .replace(/[\x00-\x1F\x7F]/g, " "); // control chars
+      .replace(/\\(?!["\\/bfnrtu])/g, "\\\\")
+      .replace(/[\x00-\x1F\x7F]/g, " ");
     return JSON.parse(fixed);
   } catch {}
-
-  // 3. Qo'lda tozalash
   try {
     const cleaned = text
       .replace(/```json\s*/gi, "")
@@ -49,7 +44,6 @@ const safeJsonParse = (text) => {
       .trim();
     return JSON.parse(cleaned);
   } catch {}
-
   return null;
 };
 
@@ -73,6 +67,18 @@ const isMathContent = (text) => {
   return mathKeywords.test(text) || mathSymbols.test(text);
 };
 
+// Til aniqlash — ruscha, o'zbekcha, inglizcha
+const detectLanguage = (text) => {
+  const sample = text.substring(0, 1000);
+  const cyrillicRu = (sample.match(/[а-яёА-ЯЁ]/g) || []).length;
+  const cyrillicUz = (sample.match(/[a-zA-Zа-яёА-ЯЁ]/g) || []).length;
+  const latinUz = /o'|g'|sh|ch|ng/i.test(sample);
+
+  if (cyrillicRu > 50) return "Russian";
+  if (latinUz || cyrillicUz > 20) return "Uzbek";
+  return "English";
+};
+
 // ===== TEST SAVOLLAR YARATISH =====
 const generateTests = async (
   extractedText,
@@ -83,14 +89,17 @@ const generateTests = async (
   const customPrompt = options.customPrompt || null;
   const isMath = isMathContent(extractedText + " " + title);
 
-  // LaTeX uchun muhim: AI ga JSON ichida LaTeX yozishni o'rgatish
+  // Til aniqlash
+  const lang = detectLanguage(extractedText);
+  const langInstruction = `IMPORTANT: Write ALL questions and answer options in ${lang} language only. Do not mix languages.`;
+
   const latexNote = isMath
     ? `
-IMPORTANT - LaTeX in JSON:
-- Use LaTeX for ALL math: inline \\(formula\\) or $formula$
-- In JSON strings, backslash must be doubled: \\\\frac, \\\\sqrt, \\\\times
-- Example question: "Solve: $x^2 - 5x + 6 = 0$"
-- Example option: "$x = 2$ and $x = 3$"`
+LaTeX RULES (MANDATORY):
+- Use LaTeX for ALL math formulas and equations
+- Inline: $formula$ (example: $x^2 + 2x - 3 = 0$, $\\frac{a}{b}$, $\\sqrt{x}$)
+- In JSON strings backslash must be doubled: \\\\frac, \\\\sqrt, \\\\times
+- Apply LaTeX in both questions and answer options`
     : "";
 
   let resolvedCount = questionCount;
@@ -104,9 +113,9 @@ IMPORTANT - LaTeX in JSON:
       ? parseInt(countMatch[1] || countMatch[3])
       : null;
     resolvedCount = promptCount || questionCount;
-    taskInstruction = `Teacher instruction: ${customPrompt}\nCreate exactly ${resolvedCount} questions.${latexNote}`;
+    taskInstruction = `Teacher instruction: ${customPrompt}\nCreate exactly ${resolvedCount} questions.\n${langInstruction}${latexNote}`;
   } else {
-    taskInstruction = `Create exactly ${resolvedCount} test questions based on the text.${latexNote}`;
+    taskInstruction = `Create exactly ${resolvedCount} test questions based on the text.\n${langInstruction}${latexNote}`;
   }
 
   const prompt = `You are an AI that creates multiple choice test questions for students.
@@ -129,8 +138,6 @@ ${buildJsonExample(resolvedCount)}`;
   });
 
   const raw = completion.choices[0]?.message?.content || "";
-
-  // JSON ni topish
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("AI javob formati noto'g'ri");
 
@@ -188,6 +195,7 @@ const generateFeedback = async (
 ) => {
   try {
     const total = results.length;
+    const lang = detectLanguage(extractedText);
     const wrong = results
       .filter((r) => !r.isCorrect)
       .map((r) => `- ${r.question}`)
@@ -198,7 +206,7 @@ const generateFeedback = async (
       messages: [
         {
           role: "user",
-          content: `Talaba ${correctCount}/${total} to'g'ri javob berdi (${percentage.toFixed(0)}%). ${wrong ? "Xato savollar:\n" + wrong : "Barchasi to'g'ri!"} O'zbek tilida 2-3 gaplik rag'batlantiruvchi fikr yoz.`,
+          content: `Student answered ${correctCount}/${total} correctly (${percentage.toFixed(0)}%). ${wrong ? "Wrong questions:\n" + wrong : "All correct!"} Write 2-3 encouraging sentences in ${lang} language.`,
         },
       ],
       max_tokens: 200,
