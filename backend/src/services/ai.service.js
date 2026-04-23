@@ -67,15 +67,43 @@ const isMathContent = (text) => {
   return mathKeywords.test(text) || mathSymbols.test(text);
 };
 
-// Til aniqlash — ruscha, o'zbekcha, inglizcha
+// Til aniqlash — aniqroq algoritm
 const detectLanguage = (text) => {
-  const sample = text.substring(0, 1000);
-  const cyrillicRu = (sample.match(/[а-яёА-ЯЁ]/g) || []).length;
-  const cyrillicUz = (sample.match(/[a-zA-Zа-яёА-ЯЁ]/g) || []).length;
-  const latinUz = /o'|g'|sh|ch|ng/i.test(sample);
+  const sample = text.substring(0, 2000);
 
-  if (cyrillicRu > 50) return "Russian";
-  if (latinUz || cyrillicUz > 20) return "Uzbek";
+  // Rus tiliga XOS harflar (o'zbek kirilida yo'q): ы, э, ъ, ё
+  const ruOnlyChars = (sample.match(/[ыэъё]/gi) || []).length;
+
+  // Rus tiliga xos so'zlar
+  const ruWords = (
+    sample.match(
+      /\b(и|в|на|что|это|как|для|или|но|да|нет|не|по|из|к|с|о|от|до|при|под|над|за|со|без|об|про|через|между|против)\b/gi,
+    ) || []
+  ).length;
+
+  // O'zbek tiliga xos so'zlar
+  const uzWords = (
+    sample.match(
+      /\b(va|bu|bir|bilan|uchun|ham|lekin|agar|yoki|kerak|bo'ladi|qiladi|deb|degan|ning|ga|dan|da|ni)\b/gi,
+    ) || []
+  ).length;
+
+  // Kirill harflar umumiy soni
+  const cyrillic = (sample.match(/[а-яёА-ЯЁ]/g) || []).length;
+
+  // Agar rus tiliga xos belgilar ko'p bo'lsa yoki rus so'zlari ko'p
+  if (ruOnlyChars > 3 || ruWords > 5 || (cyrillic > 100 && ruWords > uzWords)) {
+    return "Russian";
+  }
+
+  // O'zbek (lotin yoki kirill)
+  if (uzWords > 3 || /o'|g'|sh|ch|ng/i.test(sample)) {
+    return "Uzbek";
+  }
+
+  // Kirill bor lekin aniqlab bo'lmadi — russian deb hisobla
+  if (cyrillic > 50) return "Russian";
+
   return "English";
 };
 
@@ -91,15 +119,16 @@ const generateTests = async (
 
   // Til aniqlash
   const lang = detectLanguage(extractedText);
-  const langInstruction = `IMPORTANT: Write ALL questions and answer options in ${lang} language only. Do not mix languages.`;
+  console.log(`📝 Til aniqlandi: ${lang}`);
+
+  const langInstruction = `CRITICAL: Write ALL questions, ALL answer options, and ALL explanations ONLY in ${lang} language. Do NOT use any other language.`;
 
   const latexNote = isMath
     ? `
-LaTeX RULES (MANDATORY):
-- Use LaTeX for ALL math formulas and equations
-- Inline: $formula$ (example: $x^2 + 2x - 3 = 0$, $\\frac{a}{b}$, $\\sqrt{x}$)
+LaTeX RULES (MANDATORY for math):
+- Use LaTeX for ALL math formulas: inline $formula$
 - In JSON strings backslash must be doubled: \\\\frac, \\\\sqrt, \\\\times
-- Apply LaTeX in both questions and answer options`
+- Example: "$x^2 + 2x - 3 = 0$", "$\\\\frac{a}{b}$"`
     : "";
 
   let resolvedCount = questionCount;
@@ -115,19 +144,19 @@ LaTeX RULES (MANDATORY):
     resolvedCount = promptCount || questionCount;
     taskInstruction = `Teacher instruction: ${customPrompt}\nCreate exactly ${resolvedCount} questions.\n${langInstruction}${latexNote}`;
   } else {
-    taskInstruction = `Create exactly ${resolvedCount} test questions based on the text.\n${langInstruction}${latexNote}`;
+    taskInstruction = `Create exactly ${resolvedCount} test questions.\n${langInstruction}${latexNote}`;
   }
 
-  const prompt = `You are an AI that creates multiple choice test questions for students.
+  const prompt = `You are an AI assistant creating multiple choice test questions.
 
-Text to base questions on:
+Source text:
 """
 ${extractedText.substring(0, 5000)}
 """
 
 ${taskInstruction}
 
-Respond ONLY with valid JSON, no markdown, no extra text:
+Output ONLY valid JSON, no markdown:
 ${buildJsonExample(resolvedCount)}`;
 
   const completion = await groqRequest({
@@ -206,7 +235,7 @@ const generateFeedback = async (
       messages: [
         {
           role: "user",
-          content: `Student answered ${correctCount}/${total} correctly (${percentage.toFixed(0)}%). ${wrong ? "Wrong questions:\n" + wrong : "All correct!"} Write 2-3 encouraging sentences in ${lang} language.`,
+          content: `Student answered ${correctCount}/${total} correctly (${percentage.toFixed(0)}%). ${wrong ? "Wrong:\n" + wrong : "All correct!"} Write 2-3 encouraging sentences in ${lang}.`,
         },
       ],
       max_tokens: 200,
