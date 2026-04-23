@@ -25,24 +25,51 @@ const groqRequest = async (params, retries = 3) => {
   }
 };
 
+// JSON ni xavfsiz parse qilish — LaTeX \\ belgilarini to'g'irlaydi
+const safeJsonParse = (text) => {
+  // 1. To'g'ridan parse qilishga harakat
+  try {
+    return JSON.parse(text);
+  } catch {}
+
+  // 2. LaTeX \\ ni vaqtincha almashtirish
+  try {
+    const fixed = text
+      .replace(/\\(?!["\\/bfnrtu])/g, "\\\\") // yakka \ ni \\ ga
+      .replace(/[\x00-\x1F\x7F]/g, " "); // control chars
+    return JSON.parse(fixed);
+  } catch {}
+
+  // 3. Qo'lda tozalash
+  try {
+    const cleaned = text
+      .replace(/```json\s*/gi, "")
+      .replace(/```\s*/g, "")
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+      .trim();
+    return JSON.parse(cleaned);
+  } catch {}
+
+  return null;
+};
+
 const buildJsonExample = (count) => {
   const items = Array.from({ length: count }, (_, i) => ({
     id: i + 1,
-    question: `Savol ${i + 1}?`,
-    options: { A: "variant1", B: "variant2", C: "variant3", D: "variant4" },
+    question: `Question ${i + 1}?`,
+    options: { A: "option1", B: "option2", C: "option3", D: "option4" },
     correctAnswer: ["A", "B", "C", "D"][i % 4],
-    explanation: "Izoh",
+    explanation: "Explanation",
   }));
-  return JSON.stringify({ questions: items });
+  return JSON.stringify({ questions: items }, null, 2);
 };
 
-// Matematik mavzu aniqlash — o'zbek, rus, ingliz tillari
+// Matematik mavzu aniqlash
 const isMathContent = (text) => {
   const mathKeywords =
-    /математик|алгебр|геометр|интеграл|дифференциал|уравнени|формул|вычислени|теорем|функци|предел|вероятност|статистик|matematik|algebra|geometr|integral|differensial|tengla|formula|hisob|funksiya|limit|calculus|equation|theorem|derivative|matrix|vector|trigon/i;
-  // Matematik belgilar ham tekshiramiz
+    /математик|алгебр|геометр|интеграл|дифференциал|уравнени|формул|теорем|функци|предел|вероятност|статистик|matematik|algebra|geometr|integral|differensial|tengla|formula|funksiya|limit|calculus|equation|theorem|derivative|matrix|vector|trigon/i;
   const mathSymbols =
-    /[=+\-×÷√∑∏∫∂²³]|(\d+[\+\-\*\/]\d+)|(x\^?\d)|(sin|cos|tan|log|ln)\s*\(/i;
+    /[=√∑∏∫∂]|(\d+[\+\-\*\/]\d+)|(x\^?\d)|(sin|cos|tan|log|ln)\s*\(/i;
   return mathKeywords.test(text) || mathSymbols.test(text);
 };
 
@@ -54,23 +81,20 @@ const generateTests = async (
 ) => {
   const questionCount = options.questionCount || 5;
   const customPrompt = options.customPrompt || null;
-
   const isMath = isMathContent(extractedText + " " + title);
 
-  const latexRule = isMath
+  // LaTeX uchun muhim: AI ga JSON ichida LaTeX yozishni o'rgatish
+  const latexNote = isMath
     ? `
-LATEX QOIDASI (MAJBURIY):
-- Barcha matematik formulalar, tenglamalar, sonlar LaTeX formatida yozilishi SHART.
-- Inline formula: $formula$ (masalan: $x^2 + 2x - 3 = 0$, $\\frac{a}{b}$, $\\sqrt{x}$)
-- Blok formula: $$formula$$ (masalan: $$\\int_0^1 x^2 dx = \\frac{1}{3}$$)
-- Savol matni ichida ham, variantlarda ham LaTeX ishlat.
-- Misol savol: "Quyidagi tenglamaning ildizini toping: $x^2 - 5x + 6 = 0$"
-- Misol variant: "A: $x = 2, x = 3$"
-- LATEX ISHLATMASANG NOTO'G'RI HISOBLANADI.`
+IMPORTANT - LaTeX in JSON:
+- Use LaTeX for ALL math: inline \\(formula\\) or $formula$
+- In JSON strings, backslash must be doubled: \\\\frac, \\\\sqrt, \\\\times
+- Example question: "Solve: $x^2 - 5x + 6 = 0$"
+- Example option: "$x = 2$ and $x = 3$"`
     : "";
 
-  let taskInstruction;
   let resolvedCount = questionCount;
+  let taskInstruction;
 
   if (customPrompt) {
     const countMatch = customPrompt.match(
@@ -80,26 +104,21 @@ LATEX QOIDASI (MAJBURIY):
       ? parseInt(countMatch[1] || countMatch[3])
       : null;
     resolvedCount = promptCount || questionCount;
-
-    taskInstruction = `O'qituvchi ko'rsatmasi: ${customPrompt}
-
-Jami ${resolvedCount} ta test savoli tuz. Ko'rsatmaga qat'iy amal qil.
-${latexRule}`;
+    taskInstruction = `Teacher instruction: ${customPrompt}\nCreate exactly ${resolvedCount} questions.${latexNote}`;
   } else {
-    taskInstruction = `${resolvedCount} ta test savoli tuz.
-${latexRule}`;
+    taskInstruction = `Create exactly ${resolvedCount} test questions based on the text.${latexNote}`;
   }
 
-  const prompt = `Sen talabalar mustaqil ishini tekshiruvchi AI yordamchisan.
+  const prompt = `You are an AI that creates multiple choice test questions for students.
 
-Quyidagi matn asosida test savollar tuz:
+Text to base questions on:
 """
-${extractedText.substring(0, 6000)}
+${extractedText.substring(0, 5000)}
 """
 
 ${taskInstruction}
 
-FAQAT JSON formatda javob ber, boshqa hech narsa yozma:
+Respond ONLY with valid JSON, no markdown, no extra text:
 ${buildJsonExample(resolvedCount)}`;
 
   const completion = await groqRequest({
@@ -109,16 +128,14 @@ ${buildJsonExample(resolvedCount)}`;
     temperature: 0.2,
   });
 
-  const text = completion.choices[0]?.message?.content || "";
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  const raw = completion.choices[0]?.message?.content || "";
+
+  // JSON ni topish
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("AI javob formati noto'g'ri");
 
-  let parsed;
-  try {
-    parsed = JSON.parse(jsonMatch[0]);
-  } catch {
-    throw new Error("AI javobini parse qilishda xatolik");
-  }
+  const parsed = safeJsonParse(jsonMatch[0]);
+  if (!parsed) throw new Error("AI javobini parse qilishda xatolik");
 
   if (!parsed.questions || parsed.questions.length < 1)
     throw new Error("AI savollar yarata olmadi");
