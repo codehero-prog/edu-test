@@ -25,77 +25,78 @@ const groqRequest = async (params, retries = 3) => {
   }
 };
 
-// JSON ni xavfsiz parse qilish — LaTeX uchun kuchaytirilgan
+// JSON ni xavfsiz parse qilish
 const safeJsonParse = (raw) => {
-  // 1. To'g'ridan
-  try {
-    return JSON.parse(raw);
-  } catch {}
+  const attempts = [
+    // 1. To'g'ridan
+    () => JSON.parse(raw),
+    // 2. Markdown tozalash
+    () =>
+      JSON.parse(
+        raw
+          .replace(/^```json\s*/i, "")
+          .replace(/```\s*$/i, "")
+          .trim(),
+      ),
+    // 3. Control chars tozalash
+    () => JSON.parse(raw.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")),
+    // 4. LaTeX backslash fix
+    () => {
+      const fixed = raw.replace(/"((?:[^"\\]|\\.)*)"/g, (match, content) => {
+        return '"' + content.replace(/\\(?!["\\/bfnrtu])/g, "\\\\") + '"';
+      });
+      return JSON.parse(fixed);
+    },
+    // 5. Kesilgan JSON ni yopish
+    () => {
+      let text = raw.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+      // Oxirgi to'liq savol gacha kesish
+      const lastComplete = text.lastIndexOf("}");
+      if (lastComplete === -1) throw new Error("No closing brace");
+      text = text.substring(0, lastComplete + 1);
+      // questions array ni yopish
+      if (!text.includes('"questions"')) throw new Error("No questions key");
+      // To'liq JSON tuzish
+      const openBraces = (text.match(/\{/g) || []).length;
+      const closeBraces = (text.match(/\}/g) || []).length;
+      const openBracks = (text.match(/\[/g) || []).length;
+      const closeBracks = (text.match(/\]/g) || []).length;
+      text += "]".repeat(Math.max(0, openBracks - closeBracks));
+      text += "}".repeat(Math.max(0, openBraces - closeBraces));
+      return JSON.parse(text);
+    },
+  ];
 
-  // 2. Markdown tozalash
-  let text = raw
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/```\s*$/i, "")
-    .trim();
-  try {
-    return JSON.parse(text);
-  } catch {}
-
-  // 3. LaTeX backslash fix: yakka \ ni \\ ga (JSON string ichida)
-  try {
-    const fixed = text.replace(/"([^"]*)"/g, (match, content) => {
-      const escapedContent = content
-        .replace(/\\/g, "\\\\") // \ → \\
-        .replace(/\\\\\\\\/g, "\\\\") // \\\\ → \\ (ortiqcha escape oldini olish)
-        .replace(/\\\\"/g, '\\"'); // \\" ni to'g'irlash
-      return `"${escapedContent}"`;
-    });
-    return JSON.parse(fixed);
-  } catch {}
-
-  // 4. Control chars tozalash
-  try {
-    const cleaned = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
-    return JSON.parse(cleaned);
-  } catch {}
-
-  // 5. Newline va tab tozalash
-  try {
-    const noNewlines = text
-      .replace(/\n/g, " ")
-      .replace(/\r/g, "")
-      .replace(/\t/g, " ");
-    return JSON.parse(noNewlines);
-  } catch (e) {
-    console.error("❌ Parse xatoligi:", e.message);
-    console.error("❌ Raw text:", text.substring(0, 500));
+  for (const attempt of attempts) {
+    try {
+      return attempt();
+    } catch {}
   }
 
+  console.error("❌ Parse failed. Raw:", raw.substring(0, 300));
   return null;
 };
 
+// Qisqa JSON example — kamroq token sarflash uchun
 const buildJsonExample = (count) => {
   const items = Array.from({ length: count }, (_, i) => ({
     id: i + 1,
-    question: `Question ${i + 1}`,
-    options: { A: "option1", B: "option2", C: "option3", D: "option4" },
-    correctAnswer: ["A", "B", "C", "D"][i % 4],
-    explanation: "Explanation here",
+    question: "Q?",
+    options: { A: "a", B: "b", C: "c", D: "d" },
+    correctAnswer: "A",
+    explanation: "exp",
   }));
   return JSON.stringify({ questions: items });
 };
 
-// Matematik mavzu aniqlash
 const isMathContent = (text) => {
-  const mathKeywords =
-    /математик|алгебр|геометр|интеграл|дифференциал|уравнени|формул|теорем|функци|предел|вероятност|статистик|matematik|algebra|geometr|integral|differensial|tengla|formula|funksiya|limit|calculus|equation|theorem|derivative|matrix|vector|trigon/i;
-  const mathSymbols =
+  const mathKw =
+    /математик|алгебр|геометр|интеграл|дифференциал|уравнени|формул|теорем|функци|предел|вероятност|статистик|matematik|algebra|geometr|integral|differensial|tengla|formula|funksiya|limit|calculus|equation|theorem|derivative|matrix|vector|trigon|multivariable|partial/i;
+  const mathSym =
     /[=√∑∏∫∂]|(\d+[\+\-\*\/]\d+)|(x\^?\d)|(sin|cos|tan|log|ln)\s*\(/i;
-  return mathKeywords.test(text) || mathSymbols.test(text);
+  return mathKw.test(text) || mathSym.test(text);
 };
 
-// Til aniqlash
 const detectLanguage = (text) => {
   const sample = text.substring(0, 2000);
   const ruOnlyChars = (sample.match(/[ыэъё]/gi) || []).length;
@@ -110,29 +111,29 @@ const detectLanguage = (text) => {
     ) || []
   ).length;
   const cyrillic = (sample.match(/[а-яёА-ЯЁ]/g) || []).length;
+  const latin = (sample.match(/[a-zA-Z]/g) || []).length;
 
   if (ruOnlyChars > 2 || ruWords > 3 || (cyrillic > 80 && ruWords >= uzWords))
     return "ru";
   if (uzWords > 3 || /o'|g'|sh|ch/i.test(sample)) return "uz";
   if (cyrillic > 50) return "ru";
+  if (latin > 100) return "en";
   return "en";
 };
 
-// System prompt
 const getSystemPrompt = (lang, isMath) => {
   const base =
     {
-      ru: "Ты создаёшь тестовые вопросы на РУССКОМ языке. Все вопросы и варианты ответов пиши ТОЛЬКО по-русски.",
-      uz: "Siz test savollari yaratasiz. Barcha savol va variantlarni FAQAT o'zbek tilida yozing.",
-      en: "You create test questions in ENGLISH only.",
-    }[lang] || "You create test questions in English only.";
+      ru: "Ты создаёшь тестовые вопросы. Отвечай ТОЛЬКО на русском языке. Возвращай ТОЛЬКО валидный JSON без пояснений.",
+      uz: "Siz test savollari yaratasiz. FAQAT o'zbek tilida javob bering. FAQAT JSON qaytaring.",
+      en: "You create test questions. Reply in English only. Return ONLY valid JSON, no explanations.",
+    }[lang] || "You create test questions. Return ONLY valid JSON.";
 
-  // LaTeX uchun muhim: AI ga JSON ichida backslash ni qanday yozishni ko'rsatish
   const mathRule = isMath
     ? {
-        ru: " Математические формулы пиши в LaTeX: $формула$. ВАЖНО: в JSON строках обратный слеш должен быть удвоен — пиши \\\\frac вместо \\frac, \\\\sqrt вместо \\sqrt.",
-        uz: " Matematik formulalarni LaTeX da yoz: $formula$. MUHIM: JSON ichida backslash ikki marta yoziladi — \\\\frac, \\\\sqrt.",
-        en: " Use LaTeX for math: $formula$. IMPORTANT: in JSON strings double the backslash — write \\\\frac not \\frac.",
+        ru: " Для формул используй LaTeX: $формула$. В JSON строках пиши \\\\frac, \\\\sqrt (двойной слеш).",
+        uz: " Formulalar uchun LaTeX ishlat: $formula$. JSON da \\\\frac, \\\\sqrt (ikki backslash).",
+        en: " Use LaTeX for math: $formula$. In JSON write \\\\frac, \\\\sqrt (double backslash).",
       }[lang] || ""
     : "";
 
@@ -151,7 +152,6 @@ const generateTests = async (extractedText, title = "", options = {}) => {
   );
 
   let resolvedCount = questionCount;
-
   if (customPrompt) {
     const countMatch = customPrompt.match(
       /(\d+)\s*ta\s*(test|savol)|(\d+)\s*вопрос/i,
@@ -161,13 +161,19 @@ const generateTests = async (extractedText, title = "", options = {}) => {
       : questionCount;
   }
 
+  // Matnni qisqartirish — ko'p token sarflamaslik uchun
+  const shortText = extractedText.substring(0, 3000);
+
   const userMsg =
     {
-      ru: `Создай ${resolvedCount} тестовых вопроса по тексту ниже. Верни ТОЛЬКО JSON без пояснений.\n\nТекст:\n"""\n${extractedText.substring(0, 4000)}\n"""\n\nФормат: ${buildJsonExample(resolvedCount)}`,
-      uz: `Quyidagi matndan ${resolvedCount} ta test savoli tuz. FAQAT JSON qaytar.\n\nMatn:\n"""\n${extractedText.substring(0, 4000)}\n"""\n\nFormat: ${buildJsonExample(resolvedCount)}`,
-      en: `Create ${resolvedCount} test questions from the text below. Return ONLY JSON.\n\nText:\n"""\n${extractedText.substring(0, 4000)}\n"""\n\nFormat: ${buildJsonExample(resolvedCount)}`,
+      ru: `Создай ${resolvedCount} вопросов по тексту. Верни ТОЛЬКО JSON.\nТекст: """${shortText}"""\nФормат: ${buildJsonExample(resolvedCount)}`,
+      uz: `${resolvedCount} ta savol tuz. FAQAT JSON qaytar.\nMatn: """${shortText}"""\nFormat: ${buildJsonExample(resolvedCount)}`,
+      en: `Create ${resolvedCount} questions. Return ONLY JSON.\nText: """${shortText}"""\nFormat: ${buildJsonExample(resolvedCount)}`,
     }[lang] ||
-    `Create ${resolvedCount} questions. Return ONLY JSON: ${buildJsonExample(resolvedCount)}`;
+    `Create ${resolvedCount} questions. Return ONLY JSON.\nText: """${shortText}"""\nFormat: ${buildJsonExample(resolvedCount)}`;
+
+  // max_tokens: har bir savol ~300 token, minimum 3000
+  const maxTokens = Math.max(3000, resolvedCount * 500);
 
   const completion = await groqRequest({
     model: "llama-3.3-70b-versatile",
@@ -175,12 +181,12 @@ const generateTests = async (extractedText, title = "", options = {}) => {
       { role: "system", content: getSystemPrompt(lang, isMath) },
       { role: "user", content: userMsg },
     ],
-    max_tokens: Math.max(2000, resolvedCount * 400),
+    max_tokens: maxTokens,
     temperature: 0.1,
   });
 
   const raw = completion.choices[0]?.message?.content || "";
-  console.log("🤖 AI raw (first 300):", raw.substring(0, 300));
+  console.log(`🤖 AI raw (${raw.length} chars):`, raw.substring(0, 200));
 
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("AI javob formati noto'g'ri");
@@ -245,22 +251,22 @@ const generateFeedback = async (
       .map((r) => `- ${r.question}`)
       .join("\n");
 
-    const systemMap = {
-      ru: "Ты помощник преподавателя. Пиши ТОЛЬКО на русском языке.",
+    const sysMap = {
+      ru: "Ты помощник преподавателя. Пиши ТОЛЬКО на русском.",
       uz: "Siz o'qituvchi yordamchisiz. FAQAT o'zbek tilida yozing.",
       en: "You are a teacher assistant. Write in English only.",
     };
-    const userMap = {
-      ru: `Студент ответил правильно на ${correctCount}/${total} (${percentage.toFixed(0)}%). ${wrong ? "Неверные:\n" + wrong : "Все правильно!"} Напиши 2-3 ободряющих предложения.`,
-      uz: `Talaba ${correctCount}/${total} to'g'ri javob berdi (${percentage.toFixed(0)}%). ${wrong ? "Xato:\n" + wrong : "Hammasi to'g'ri!"} 2-3 gap rag'batlantiruvchi fikr yoz.`,
-      en: `Student got ${correctCount}/${total} (${percentage.toFixed(0)}%). ${wrong ? "Wrong:\n" + wrong : "All correct!"} Write 2-3 encouraging sentences.`,
+    const usrMap = {
+      ru: `Студент: ${correctCount}/${total} (${percentage.toFixed(0)}%). ${wrong ? "Неверные:\n" + wrong : "Всё правильно!"} 2-3 ободряющих предложения.`,
+      uz: `Talaba: ${correctCount}/${total} (${percentage.toFixed(0)}%). ${wrong ? "Xato:\n" + wrong : "Hammasi to'g'ri!"} 2-3 gap rag'batlantiruvchi fikr.`,
+      en: `Student: ${correctCount}/${total} (${percentage.toFixed(0)}%). ${wrong ? "Wrong:\n" + wrong : "All correct!"} 2-3 encouraging sentences.`,
     };
 
     const completion = await groqRequest({
       model: "llama-3.3-70b-versatile",
       messages: [
-        { role: "system", content: systemMap[lang] || systemMap.en },
-        { role: "user", content: userMap[lang] || userMap.en },
+        { role: "system", content: sysMap[lang] || sysMap.en },
+        { role: "user", content: usrMap[lang] || usrMap.en },
       ],
       max_tokens: 200,
       temperature: 0.5,
