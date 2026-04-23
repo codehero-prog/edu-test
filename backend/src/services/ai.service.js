@@ -25,37 +25,65 @@ const groqRequest = async (params, retries = 3) => {
   }
 };
 
-// JSON ni xavfsiz parse qilish
-const safeJsonParse = (text) => {
+// JSON ni xavfsiz parse qilish — LaTeX uchun kuchaytirilgan
+const safeJsonParse = (raw) => {
+  // 1. To'g'ridan
+  try {
+    return JSON.parse(raw);
+  } catch {}
+
+  // 2. Markdown tozalash
+  let text = raw
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
   try {
     return JSON.parse(text);
   } catch {}
+
+  // 3. LaTeX backslash fix: yakka \ ni \\ ga (JSON string ichida)
   try {
-    const fixed = text
-      .replace(/\\(?!["\\/bfnrtu])/g, "\\\\")
-      .replace(/[\x00-\x1F\x7F]/g, " ");
+    const fixed = text.replace(/"([^"]*)"/g, (match, content) => {
+      const escapedContent = content
+        .replace(/\\/g, "\\\\") // \ → \\
+        .replace(/\\\\\\\\/g, "\\\\") // \\\\ → \\ (ortiqcha escape oldini olish)
+        .replace(/\\\\"/g, '\\"'); // \\" ni to'g'irlash
+      return `"${escapedContent}"`;
+    });
     return JSON.parse(fixed);
   } catch {}
+
+  // 4. Control chars tozalash
   try {
-    const cleaned = text
-      .replace(/```json\s*/gi, "")
-      .replace(/```\s*/g, "")
-      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
-      .trim();
+    const cleaned = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
     return JSON.parse(cleaned);
   } catch {}
+
+  // 5. Newline va tab tozalash
+  try {
+    const noNewlines = text
+      .replace(/\n/g, " ")
+      .replace(/\r/g, "")
+      .replace(/\t/g, " ");
+    return JSON.parse(noNewlines);
+  } catch (e) {
+    console.error("❌ Parse xatoligi:", e.message);
+    console.error("❌ Raw text:", text.substring(0, 500));
+  }
+
   return null;
 };
 
 const buildJsonExample = (count) => {
   const items = Array.from({ length: count }, (_, i) => ({
     id: i + 1,
-    question: `Вопрос ${i + 1}?`,
-    options: { A: "вариант1", B: "вариант2", C: "вариант3", D: "вариант4" },
+    question: `Question ${i + 1}`,
+    options: { A: "option1", B: "option2", C: "option3", D: "option4" },
     correctAnswer: ["A", "B", "C", "D"][i % 4],
-    explanation: "Объяснение",
+    explanation: "Explanation here",
   }));
-  return JSON.stringify({ questions: items }, null, 2);
+  return JSON.stringify({ questions: items });
 };
 
 // Matematik mavzu aniqlash
@@ -90,23 +118,25 @@ const detectLanguage = (text) => {
   return "en";
 };
 
-// System prompt tili bo'yicha
+// System prompt
 const getSystemPrompt = (lang, isMath) => {
-  const langMap = {
-    ru: "Ты создаёшь тестовые вопросы. Пиши ВСЕ вопросы и варианты ответов ТОЛЬКО на русском языке.",
-    uz: "Siz test savollari yaratasiz. BARCHA savollar va variantlarni FAQAT o'zbek tilida yozing.",
-    en: "You create test questions. Write ALL questions and options in English only.",
-  };
+  const base =
+    {
+      ru: "Ты создаёшь тестовые вопросы на РУССКОМ языке. Все вопросы и варианты ответов пиши ТОЛЬКО по-русски.",
+      uz: "Siz test savollari yaratasiz. Barcha savol va variantlarni FAQAT o'zbek tilida yozing.",
+      en: "You create test questions in ENGLISH only.",
+    }[lang] || "You create test questions in English only.";
 
-  const latexRule = isMath
-    ? lang === "ru"
-      ? " Все математические формулы записывай в LaTeX: $формула$ (в JSON используй двойной обратный слеш: \\\\frac, \\\\sqrt)."
-      : lang === "uz"
-        ? " Barcha matematik formulalarni LaTeX da yozing: $formula$ (JSON da ikki backslash: \\\\frac, \\\\sqrt)."
-        : " Use LaTeX for all math: $formula$ (double backslash in JSON: \\\\frac, \\\\sqrt)."
+  // LaTeX uchun muhim: AI ga JSON ichida backslash ni qanday yozishni ko'rsatish
+  const mathRule = isMath
+    ? {
+        ru: " Математические формулы пиши в LaTeX: $формула$. ВАЖНО: в JSON строках обратный слеш должен быть удвоен — пиши \\\\frac вместо \\frac, \\\\sqrt вместо \\sqrt.",
+        uz: " Matematik formulalarni LaTeX da yoz: $formula$. MUHIM: JSON ichida backslash ikki marta yoziladi — \\\\frac, \\\\sqrt.",
+        en: " Use LaTeX for math: $formula$. IMPORTANT: in JSON strings double the backslash — write \\\\frac not \\frac.",
+      }[lang] || ""
     : "";
 
-  return (langMap[lang] || langMap.en) + latexRule;
+  return base + mathRule;
 };
 
 // ===== TEST SAVOLLAR YARATISH =====
@@ -116,12 +146,11 @@ const generateTests = async (extractedText, title = "", options = {}) => {
   const isMath = isMathContent(extractedText + " " + title);
   const lang = detectLanguage(extractedText);
 
-  console.log(`📝 Til: ${lang} | Matematik: ${isMath}`);
-
-  const systemPrompt = getSystemPrompt(lang, isMath);
+  console.log(
+    `📝 Til: ${lang} | Matematik: ${isMath} | Savol: ${questionCount}`,
+  );
 
   let resolvedCount = questionCount;
-  let userMsg;
 
   if (customPrompt) {
     const countMatch = customPrompt.match(
@@ -130,24 +159,20 @@ const generateTests = async (extractedText, title = "", options = {}) => {
     resolvedCount = countMatch
       ? parseInt(countMatch[1] || countMatch[3])
       : questionCount;
-
-    userMsg =
-      lang === "ru"
-        ? `Инструкция преподавателя: ${customPrompt}\n\nСоздай ровно ${resolvedCount} вопроса по тексту:\n"""\n${extractedText.substring(0, 5000)}\n"""\n\nВерни ТОЛЬКО JSON без markdown:\n${buildJsonExample(resolvedCount)}`
-        : `Teacher: ${customPrompt}\n\nCreate ${resolvedCount} questions from:\n"""\n${extractedText.substring(0, 5000)}\n"""\n\nReturn ONLY JSON:\n${buildJsonExample(resolvedCount)}`;
-  } else {
-    userMsg =
-      lang === "ru"
-        ? `Создай ${resolvedCount} тестовых вопроса по следующему тексту:\n"""\n${extractedText.substring(0, 5000)}\n"""\n\nВерни ТОЛЬКО JSON без markdown:\n${buildJsonExample(resolvedCount)}`
-        : lang === "uz"
-          ? `Quyidagi matn asosida ${resolvedCount} ta test savoli tuz:\n"""\n${extractedText.substring(0, 5000)}\n"""\n\nFAQAT JSON qaytargin:\n${buildJsonExample(resolvedCount)}`
-          : `Create ${resolvedCount} test questions from:\n"""\n${extractedText.substring(0, 5000)}\n"""\n\nReturn ONLY JSON:\n${buildJsonExample(resolvedCount)}`;
   }
+
+  const userMsg =
+    {
+      ru: `Создай ${resolvedCount} тестовых вопроса по тексту ниже. Верни ТОЛЬКО JSON без пояснений.\n\nТекст:\n"""\n${extractedText.substring(0, 4000)}\n"""\n\nФормат: ${buildJsonExample(resolvedCount)}`,
+      uz: `Quyidagi matndan ${resolvedCount} ta test savoli tuz. FAQAT JSON qaytar.\n\nMatn:\n"""\n${extractedText.substring(0, 4000)}\n"""\n\nFormat: ${buildJsonExample(resolvedCount)}`,
+      en: `Create ${resolvedCount} test questions from the text below. Return ONLY JSON.\n\nText:\n"""\n${extractedText.substring(0, 4000)}\n"""\n\nFormat: ${buildJsonExample(resolvedCount)}`,
+    }[lang] ||
+    `Create ${resolvedCount} questions. Return ONLY JSON: ${buildJsonExample(resolvedCount)}`;
 
   const completion = await groqRequest({
     model: "llama-3.3-70b-versatile",
     messages: [
-      { role: "system", content: systemPrompt },
+      { role: "system", content: getSystemPrompt(lang, isMath) },
       { role: "user", content: userMsg },
     ],
     max_tokens: Math.max(2000, resolvedCount * 400),
@@ -155,6 +180,8 @@ const generateTests = async (extractedText, title = "", options = {}) => {
   });
 
   const raw = completion.choices[0]?.message?.content || "";
+  console.log("🤖 AI raw (first 300):", raw.substring(0, 300));
+
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("AI javob formati noto'g'ri");
 
@@ -221,9 +248,8 @@ const generateFeedback = async (
     const systemMap = {
       ru: "Ты помощник преподавателя. Пиши ТОЛЬКО на русском языке.",
       uz: "Siz o'qituvchi yordamchisiz. FAQAT o'zbek tilida yozing.",
-      en: "You are a teacher's assistant. Write in English only.",
+      en: "You are a teacher assistant. Write in English only.",
     };
-
     const userMap = {
       ru: `Студент ответил правильно на ${correctCount}/${total} (${percentage.toFixed(0)}%). ${wrong ? "Неверные:\n" + wrong : "Все правильно!"} Напиши 2-3 ободряющих предложения.`,
       uz: `Talaba ${correctCount}/${total} to'g'ri javob berdi (${percentage.toFixed(0)}%). ${wrong ? "Xato:\n" + wrong : "Hammasi to'g'ri!"} 2-3 gap rag'batlantiruvchi fikr yoz.`,
